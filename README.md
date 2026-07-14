@@ -164,6 +164,8 @@ These apps share a visual language but answer different questions:
 - **[SegmentSignal](https://github.com/UlrikErlingsen/customer-segmentation)** asks whether customers form stable, useful groups and profiles those groups.
 - **[ChoiceSignal](https://github.com/UlrikErlingsen/conjoint-analysis)** asks how product attributes drive choice: conjoint part-worth utilities, attribute importance, and preference-share simulation.
 - **[AdoptSignal](https://github.com/UlrikErlingsen/adoption-forecasting)** asks when a new product gets adopted: Bass diffusion forecasting from published analogies or real history.
+- **[DriverSignal](https://github.com/UlrikErlingsen/survey-driver-analysis)** asks which measured experiences move with satisfaction or recommendation scores.
+- **[AllocSignal](https://github.com/UlrikErlingsen/marketing-mix-allocation)** asks where the next marketing budget should go, given response assumptions and constraints.
 - **PositionSignal** asks how brands are perceived relative to competitors on a chosen set of attributes.
 
 Perception is not preference. A brand can occupy a distinctive PositionSignal location without winning ChoiceSignal simulations, and a valuable customer group in WorthSignal or SegmentSignal does not automatically perceive the market in the same way.
