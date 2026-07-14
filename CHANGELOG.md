@@ -4,6 +4,12 @@ All notable changes to PositionSignal are documented here. The project follows [
 
 ## [Unreleased]
 
+## [1.0.1] - 2026-07-14
+
+### Changed
+
+- Removed the "multidimensional scaling" package keyword: the app implements PCA, not MDS.
+
 ## [1.0.0] - 2026-07-14
 
 ### Added
