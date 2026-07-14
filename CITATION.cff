@@ -1,0 +1,20 @@
+cff-version: 1.2.0
+message: "If PositionSignal supports your research or teaching, please cite this software and the original sources for the methods you use."
+title: "PositionSignal: Open Perceptual Mapping for Brand Positioning"
+type: software
+authors:
+  - family-names: "Erlingsen"
+    given-names: "Ulrik"
+    alias: "UlrikErlingsen"
+version: 1.0.0
+date-released: 2026-07-14
+license: AGPL-3.0-or-later
+repository-code: "https://github.com/UlrikErlingsen/brand-positioning"
+url: "https://github.com/UlrikErlingsen/brand-positioning"
+keywords:
+  - brand positioning
+  - perceptual mapping
+  - principal component analysis
+  - biplot
+  - marketing analytics
+  - market research
