@@ -31,6 +31,7 @@ Before computing anything, ask:
 2. **Which attributes** are the rating dimensions, and are they all rated on the direction where higher = more of the attribute? (If some items are reverse-worded, agree on recoding before analysis.)
 3. **What shape is the data** — already-aggregated brand means, or one row per respondent-brand pair? If respondent-level: is there a respondent ID column, and an optional survey-weight column?
 4. Does the user want **bootstrap uncertainty regions**? (Only possible with respondent-level data.)
+5. Are there declared **wave/period or segment columns**, and does the user want association leadership or POP/POD candidates for a focus brand? Record the comparison values and descriptive thresholds before reading results.
 
 ### Data requirements
 
@@ -71,6 +72,8 @@ Hard requirements and checks:
 
 **Step 9 — Bootstrap uncertainty (respondent-level data only, on request).** Resample **respondent IDs** with replacement, carrying every row belonging to a sampled respondent together (this preserves dependence when one person rated several brands); if respondents belong to independent brand-specific samples, resample within brand so each brand's sample size is preserved. Weights stay attached to their respondents. Rerun aggregation, standardization, and PCA from scratch each iteration. Require at least two independent respondents in every included brand-attribute cell, and caution when any base is below 10. Because bootstrap axes can flip, swap, or rotate, align each bootstrap solution to the reference: estimate an orthogonal Procrustes rotation from the bootstrap and reference loading matrices (reflection and rotation allowed, no scale dilation) and apply that rotation to the centered bootstrap brand scores. From each brand's aligned score cloud, compute a covariance matrix and draw a chi-squared confidence ellipse around the cloud mean. Report how many iterations succeeded out of how many were requested, and refuse to draw regions if too few refits succeed.
 
+**Step 10 — Wave, segment, ownership, and POP/POD comparisons (optional).** Within every brand-attribute scope, compute weighted or unweighted means, standard errors, and `comparison − reference` differences. Use the independent-samples standard error plus Welch–Satterthwaite degrees of freedom for 95% intervals; warn when respondent IDs overlap because pairing is ignored. Rank current-scope brands on each attribute for descriptive association leadership. For the focus brand, compare its mean with the average selected competitor: at/above the declared positive threshold = `POINT OF DIFFERENCE CANDIDATE`; within the declared parity tolerance = `POINT OF PARITY CANDIDATE`; at/below the negative threshold = `COMPETITIVE DEFICIT`; otherwise `INDETERMINATE`. These labels are conditional descriptive rules, not legal ownership, causal change, significance tests, or proof of choice relevance.
+
 ### Diagnostics and honesty checks
 
 - **Low retention:** if `e1 + e2` is modest (for example well under ~70%), say clearly that the map hides a substantial share of the structure and that full-space distances must carry the conclusions. There is no single threshold that certifies a map.
@@ -87,6 +90,7 @@ Hard requirements and checks:
 3. **Show the fidelity block:** variance retained per component and cumulative, per-brand cos², distance correlation and stress, and eigengaps — beside the map, never in an appendix the user might skip.
 4. **Show uncertainty** if bootstrapped: successful iterations, ellipse sizes in plain language ("Brand X's position is stable / could plausibly sit anywhere in this region").
 5. **Keep caveats next to the picture**, not after it. If the user asks about "white space" on the map, answer that empty map space is not proven demand.
+6. **Show declared comparisons separately:** current profiles, association leadership, POP/POD candidates, wave changes, segment differences, thresholds, and repeated-respondent warnings.
 
 ### Caveats you must always state
 

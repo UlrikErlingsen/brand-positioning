@@ -42,6 +42,8 @@ Rules:
 
 PositionSignal aggregates these rows to one brand mean per attribute before PCA. Supplying respondent IDs also enables respondent-cluster bootstrap uncertainty, provided there are at least 20 distinct respondents and the design is sufficiently complete.
 
+For tracking or subgroup reporting, add optional wave/period and segment columns. Keep labels stable across rows and retain the same brand set, item wording, response anchors, sampling frame, and weighting logic where possible. A respondent appearing in multiple waves should keep the same pseudonymous ID so the app can flag that its simple independent-samples interval ignores pairing. The comparison page is not a longitudinal or repeated-measures model.
+
 ## Optional weights
 
 A weight column is optional. If selected, every retained value must be finite and strictly positive. A respondent's weight must be constant on every row belonging to that respondent. For example, if `R0001` has weight `0.92`, all of that respondent's brand rows must also have `0.92`.
@@ -78,7 +80,7 @@ The current release supports at most 40 selected attributes and 60 brands in one
 
 The `examples` folder contains:
 
-- `demo_sneaker_ratings.csv` — 180 synthetic respondents rating six fictional sneaker brands on eight 1-to-7 attributes, with a constant-per-respondent sample weight;
+- `demo_sneaker_ratings.csv` — 180 synthetic respondents across two waves and two segments, rating six fictional sneaker brands on eight 1-to-7 attributes with a constant-per-respondent sample weight;
 - `demo_brand_profiles.csv` — weighted brand means derived from that respondent demo;
 - `ratings_template.csv` — a small respondent-wide starter table; and
 - `ratings_template.xlsx` — the same starter table in Excel format.

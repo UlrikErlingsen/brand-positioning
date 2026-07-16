@@ -158,6 +158,14 @@ Bootstrap axes may flip, swap, or rotate even when the underlying configuration 
 
 These are **bootstrap uncertainty regions conditional on the selected respondents, brands, attributes, weighting, and preprocessing**. They are not prediction regions, and overlapping or non-overlapping ellipses are not a formal significance test. A complex survey may require stratified, clustered, replicate-weight, or finite-population methods beyond this release. Sparse designs can generate unusable bootstrap maps; PositionSignal reports successful iterations and refuses to draw regions when too few refits succeed.
 
+## Wave, segment, ownership, and POP/POD comparisons
+
+For each selected brand and attribute, PositionSignal reports the weighted or unweighted mean and its standard error within the declared scope. Wave change is `comparison wave − reference wave`; segment difference is `comparison segment − reference segment`. Displayed 95% intervals use the independent-samples standard error `sqrt(SE_reference² + SE_comparison²)` and a Welch–Satterthwaite degrees-of-freedom approximation; a normal critical value is the fallback when both estimated standard errors are zero. When respondent IDs overlap across waves, the app warns that this approximation ignores pairing. Complex survey, repeated-measures, and longitudinal models remain outside this release.
+
+Association ownership ranks brands by the current-scope mean for each attribute and reports the leading brand, runner-up, and lead gap. “Ownership” is descriptive shorthand conditional on the selected evidence; it is not trademark ownership, cognitive salience, distinctiveness, or proof of purchase relevance.
+
+For a focus brand, the app compares its mean with the average of the selected competitors. A lead at or above the declared difference threshold is a `POINT OF DIFFERENCE CANDIDATE`; an absolute difference within the parity tolerance is a `POINT OF PARITY CANDIDATE`; a sufficiently negative difference is a `COMPETITIVE DEFICIT`. Other differences are `INDETERMINATE`. These are user-declared decision rules, not universal academic cut-offs or significance tests.
+
 ## Boundaries
 
 - At least three usable brands and two varying attributes are required. With exactly three brands, centered rank is at most two, so 100% displayed variance is automatic rather than evidence of a strong map.
@@ -168,6 +176,7 @@ These are **bootstrap uncertainty regions conditional on the selected respondent
 - Results are conditional on the competitive frame. Adding a brand or attribute changes column centers, standard deviations, and potentially the axes.
 - PCA has no privileged quadrant labels and provides no causal or market-share conclusions.
 - High explained variance does not repair biased samples, vague attributes, low awareness, or poor questionnaire design.
+- The comparison page can describe declared waves but does not establish causal change or fit a longitudinal measurement model.
 
 ## Primary references
 

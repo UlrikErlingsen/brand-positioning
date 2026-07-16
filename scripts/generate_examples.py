@@ -46,6 +46,8 @@ def sneaker_ratings() -> pd.DataFrame:
 
     for respondent_number in range(1, RESPONDENTS + 1):
         respondent_id = f"R{respondent_number:04d}"
+        collection_wave = "Wave 1" if respondent_number <= RESPONDENTS / 2 else "Wave 2"
+        segment = "Core" if respondent_number % 2 else "Growth"
         sample_weight = float(np.round(np.clip(rng.lognormal(mean=-0.025, sigma=0.24), 0.50, 2.00), 3))
         response_style = rng.normal(0.0, 0.30)
         attribute_style = rng.normal(0.0, 0.17, len(ATTRIBUTES))
@@ -55,16 +57,23 @@ def sneaker_ratings() -> pd.DataFrame:
             base = np.asarray(base_profile, dtype=float)
             noise = rng.normal(0.0, 0.43, len(ATTRIBUTES))
             ratings = np.clip(base + response_style + attribute_style + brand_style[brand_index] + noise, 1.0, 7.0)
+            if collection_wave == "Wave 2" and brand == "Aster Run":
+                ratings[ATTRIBUTES.index("innovation")] += 0.35
+            if segment == "Growth" and brand == "Morrow Pace":
+                ratings[ATTRIBUTES.index("value_for_money")] += 0.30
+            ratings = np.clip(ratings, 1.0, 7.0)
             ratings = np.round(ratings, 1)
             row: dict[str, float | str] = {
                 "respondent_id": respondent_id,
+                "collection_wave": collection_wave,
+                "segment": segment,
                 "brand": brand,
             }
             row.update(dict(zip(ATTRIBUTES, ratings.astype(float))))
             row["sample_weight"] = sample_weight
             rows.append(row)
 
-    columns = ["respondent_id", "brand", *ATTRIBUTES, "sample_weight"]
+    columns = ["respondent_id", "collection_wave", "segment", "brand", *ATTRIBUTES, "sample_weight"]
     return pd.DataFrame(rows, columns=columns)
 
 
@@ -87,14 +96,17 @@ def aggregate_profiles(ratings: pd.DataFrame) -> pd.DataFrame:
 def ratings_template() -> pd.DataFrame:
     """Return a compact, valid respondent-wide starter table."""
     rows = [
-        ["R0001", "Brand A", 6, 4, 6, 5, 4, 6, 6, 5, 0.90],
-        ["R0001", "Brand B", 5, 6, 4, 6, 5, 5, 5, 4, 0.90],
-        ["R0001", "Brand C", 6, 5, 5, 4, 6, 6, 6, 5, 0.90],
-        ["R0002", "Brand A", 7, 4, 6, 5, 4, 6, 7, 5, 1.10],
-        ["R0002", "Brand B", 5, 6, 5, 7, 5, 5, 5, 5, 1.10],
-        ["R0002", "Brand C", 6, 5, 5, 4, 6, 6, 6, 6, 1.10],
+        ["R0001", "Wave 1", "Core", "Brand A", 6, 4, 6, 5, 4, 6, 6, 5, 0.90],
+        ["R0001", "Wave 1", "Core", "Brand B", 5, 6, 4, 6, 5, 5, 5, 4, 0.90],
+        ["R0001", "Wave 1", "Core", "Brand C", 6, 5, 5, 4, 6, 6, 6, 5, 0.90],
+        ["R0002", "Wave 2", "Growth", "Brand A", 7, 4, 6, 5, 4, 6, 7, 5, 1.10],
+        ["R0002", "Wave 2", "Growth", "Brand B", 5, 6, 5, 7, 5, 5, 5, 5, 1.10],
+        ["R0002", "Wave 2", "Growth", "Brand C", 6, 5, 5, 4, 6, 6, 6, 6, 1.10],
     ]
-    return pd.DataFrame(rows, columns=["respondent_id", "brand", *ATTRIBUTES, "sample_weight"])
+    return pd.DataFrame(
+        rows,
+        columns=["respondent_id", "collection_wave", "segment", "brand", *ATTRIBUTES, "sample_weight"],
+    )
 
 
 def _verify(ratings: pd.DataFrame, profiles: pd.DataFrame) -> None:
@@ -103,6 +115,8 @@ def _verify(ratings: pd.DataFrame, profiles: pd.DataFrame) -> None:
         raise RuntimeError(f"Expected {expected_rows} respondent-brand rows, found {len(ratings)}.")
     if ratings["respondent_id"].nunique() != RESPONDENTS:
         raise RuntimeError("The demo does not contain the intended number of respondents.")
+    if ratings["collection_wave"].nunique() != 2 or ratings["segment"].nunique() != 2:
+        raise RuntimeError("The demo must contain two waves and two segments.")
     if not bool((ratings.groupby("respondent_id")["sample_weight"].nunique() == 1).all()):
         raise RuntimeError("Every respondent must retain one constant sample weight.")
     counts = ratings.groupby("brand")[ATTRIBUTES].count()

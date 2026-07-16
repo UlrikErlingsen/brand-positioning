@@ -1,7 +1,7 @@
-respondent_id,brand,quality,value_for_money,innovation,style,sustainability,comfort,performance,exclusivity,sample_weight
-R0001,Brand A,6,4,6,5,4,6,6,5,0.9
-R0001,Brand B,5,6,4,6,5,5,5,4,0.9
-R0001,Brand C,6,5,5,4,6,6,6,5,0.9
-R0002,Brand A,7,4,6,5,4,6,7,5,1.1
-R0002,Brand B,5,6,5,7,5,5,5,5,1.1
-R0002,Brand C,6,5,5,4,6,6,6,6,1.1
+respondent_id,collection_wave,segment,brand,quality,value_for_money,innovation,style,sustainability,comfort,performance,exclusivity,sample_weight
+R0001,Wave 1,Core,Brand A,6,4,6,5,4,6,6,5,0.9
+R0001,Wave 1,Core,Brand B,5,6,4,6,5,5,5,4,0.9
+R0001,Wave 1,Core,Brand C,6,5,5,4,6,6,6,5,0.9
+R0002,Wave 2,Growth,Brand A,7,4,6,5,4,6,7,5,1.1
+R0002,Wave 2,Growth,Brand B,5,6,5,7,5,5,5,5,1.1
+R0002,Wave 2,Growth,Brand C,6,5,5,4,6,6,6,6,1.1

@@ -51,10 +51,14 @@ def test_sneaker_demo_has_six_complete_brands_and_eight_attributes(
     assert set(generated_ratings["brand"]) == set(BRAND_PROFILES)
     assert list(generated_ratings.columns) == [
         "respondent_id",
+        "collection_wave",
+        "segment",
         "brand",
         *ATTRIBUTES,
         "sample_weight",
     ]
+    assert generated_ratings["collection_wave"].nunique() == 2
+    assert generated_ratings["segment"].nunique() == 2
     assert not generated_ratings.duplicated(["respondent_id", "brand"]).any()
     assert generated_ratings["respondent_id"].nunique() == RESPONDENTS
     assert (generated_ratings.groupby("respondent_id")["brand"].nunique() == 6).all()

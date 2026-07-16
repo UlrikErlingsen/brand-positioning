@@ -4,6 +4,14 @@ All notable changes to PositionSignal are documented here. The project follows [
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-07-16
+
+### Added
+
+- Declared wave and segment comparisons with transparent independent-sample intervals and repeated-respondent warnings.
+- Association-leadership reporting and focus-brand points-of-parity/points-of-difference candidate classifications.
+- Configurable descriptive thresholds and privacy-minimized Excel, CSV-ZIP, and JSON comparison evidence packs.
+
 ## [1.0.1] - 2026-07-14
 
 ### Changed

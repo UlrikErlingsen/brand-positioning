@@ -9,7 +9,8 @@ PAGES = [
     "Welcome",
     "1 · Data & setup",
     "2 · Build the map",
-    "3 · Interpret & export",
+    "3 · Compare waves & segments",
+    "4 · Interpret & export",
     "Methods & limits",
 ]
 

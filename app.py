@@ -25,6 +25,7 @@ ROOT = Path(__file__).resolve().parent
 sys.path.insert(0, str(ROOT / "src"))
 
 from positionsignal import __version__
+from positionsignal.comparison import ComparisonConfig, PositionComparisonResult, analyze_position_comparisons
 from positionsignal.errors import DataProblem, friendly_message
 from positionsignal.io import LoadedData, load_data, results_to_excel, results_to_json, tables_to_csv_zip
 from positionsignal.mapping import (
@@ -62,7 +63,8 @@ PAGES = [
     "Welcome",
     "1 · Data & setup",
     "2 · Build the map",
-    "3 · Interpret & export",
+    "3 · Compare waves & segments",
+    "4 · Interpret & export",
     "Methods & limits",
 ]
 CAUTION = (
@@ -227,6 +229,7 @@ def footer() -> None:
 for key, default in (
     ("tables", None), ("source_name", None), ("active_table", None), ("source_fingerprint", None),
     ("profile_data", None), ("setup", None), ("map_result", None), ("bootstrap_result", None),
+    ("comparison_result", None), ("comparison_config", None),
     ("map_settings", None), ("upload_epoch", 0), ("_uploader_had_file", False),
     ("nav_target", PAGES[0]), ("nav_epoch", 0),
 ):
@@ -234,7 +237,10 @@ for key, default in (
 
 
 def clear_analysis() -> None:
-    for key in ("profile_data", "setup", "map_result", "bootstrap_result", "map_settings"):
+    for key in (
+        "profile_data", "setup", "map_result", "bootstrap_result", "map_settings",
+        "comparison_result", "comparison_config",
+    ):
         st.session_state[key] = None
 
 
@@ -399,7 +405,7 @@ def render_welcome() -> None:
     metrics[3].metric("Output", "Evidence pack")
     with st.expander("Where this tool fits"):
         st.markdown(
-            "PositionSignal is for **perceptual mapping from brand-by-attribute ratings**. It is not a brand tracker, "
+            "PositionSignal is for **perceptual mapping and declared descriptive comparisons from brand-by-attribute ratings**. It is not a full brand tracker, "
             "a demand forecast, a segmentation model, or proof of causal positioning. Use the map to frame strategic "
             "questions, then test those questions with customers and market outcomes."
         )
@@ -674,8 +680,196 @@ def render_build_map() -> None:
             )
         if full_width(st.button, "Interpret this position", type="primary"):
             st.session_state["map_settings"]["focus_brand"] = focus_brand
-            go_to("3 · Interpret & export")
+            go_to("4 · Interpret & export")
             st.rerun()
+    footer()
+
+
+def _comparison_tables(result: PositionComparisonResult) -> dict[str, pd.DataFrame]:
+    tables = {
+        "Current profiles": result.current_profiles.reset_index(),
+        "Association ownership": result.association_ownership,
+        "POP POD candidates": result.pop_pod,
+    }
+    if not result.wave_change.empty:
+        tables["Wave comparison"] = result.wave_change
+    if not result.segment_change.empty:
+        tables["Segment comparison"] = result.segment_change
+    if result.warnings:
+        tables["Interpretation warnings"] = pd.DataFrame({"warning": result.warnings})
+    return tables
+
+
+def render_position_comparisons() -> None:
+    masthead()
+    st.header("Compare waves, segments & association ownership")
+    st.markdown(
+        "Use declared comparison roles to inspect movement and segment differences, then classify descriptive "
+        "association leadership and points-of-parity/points-of-difference candidates. Nothing on this page proves causality."
+    )
+    frame = current_frame()
+    if frame is None:
+        st.info("Upload a file in the sidebar or open a fictional demo first.")
+        footer()
+        return
+
+    columns = [str(column) for column in frame.columns]
+    setup = st.session_state.get("setup") or {}
+    inferred_brand = setup.get("brand_column") or infer_brand_column(frame)
+    brand_column = st.selectbox(
+        "Brand column", columns,
+        index=columns.index(inferred_brand) if inferred_brand in columns else 0,
+        key="compare_brand_column",
+    )
+    role_choices = [NONE] + [column for column in columns if column != brand_column]
+    inferred_respondent = setup.get("respondent_column") or infer_respondent_column(frame, brand_column)
+    respondent_column = st.selectbox(
+        "Respondent ID (optional)", role_choices,
+        index=role_choices.index(inferred_respondent) if inferred_respondent in role_choices else 0,
+        key="compare_respondent_column",
+    )
+    respondent_column = None if respondent_column == NONE else respondent_column
+    inferred_weight = setup.get("weight_column") or infer_weight_column(frame)
+    weight_column = st.selectbox(
+        "Survey weight (optional)", role_choices,
+        index=role_choices.index(inferred_weight) if inferred_weight in role_choices else 0,
+        key="compare_weight_column",
+    )
+    weight_column = None if weight_column == NONE else weight_column
+    role_columns = {brand_column, respondent_column, weight_column}
+    scope_choices = [NONE] + [column for column in columns if column not in role_columns]
+    wave_column = st.selectbox("Wave or period (optional)", scope_choices, key="compare_wave_column")
+    wave_column = None if wave_column == NONE else wave_column
+    segment_column = st.selectbox(
+        "Segment (optional)", [NONE] + [column for column in scope_choices[1:] if column != wave_column],
+        key="compare_segment_column",
+    )
+    segment_column = None if segment_column == NONE else segment_column
+
+    candidates = numeric_candidates(
+        frame, [column for column in (brand_column, respondent_column, weight_column, wave_column, segment_column) if column]
+    )
+    prior_attributes = [column for column in setup.get("attributes", []) if column in candidates]
+    attributes = st.multiselect(
+        "Brand attributes", candidates,
+        default=prior_attributes or candidates[: min(12, len(candidates))],
+        key="compare_attributes",
+    )
+    brands = sorted(
+        frame[brand_column].dropna().astype(str).str.strip().loc[lambda values: values.ne("")].unique().tolist(),
+        key=str.casefold,
+    )
+    focus_brand = st.selectbox("Focus brand", brands, key="compare_focus_brand") if brands else ""
+
+    reference_wave = comparison_wave = None
+    if wave_column:
+        wave_values = sorted(frame[wave_column].dropna().astype(str).unique().tolist(), key=str.casefold)
+        if len(wave_values) >= 2:
+            wave_controls = st.columns(2)
+            reference_wave = wave_controls[0].selectbox("Reference wave", wave_values, key="compare_reference_wave")
+            comparison_wave = wave_controls[1].selectbox(
+                "Comparison wave", wave_values, index=1, key="compare_comparison_wave"
+            )
+        else:
+            st.warning("The selected wave column needs at least two non-missing values.")
+
+    reference_segment = comparison_segment = None
+    if segment_column:
+        segment_scope = frame
+        if wave_column and comparison_wave is not None:
+            segment_scope = frame.loc[frame[wave_column].astype(str) == str(comparison_wave)]
+        segment_values = sorted(segment_scope[segment_column].dropna().astype(str).unique().tolist(), key=str.casefold)
+        if len(segment_values) >= 2:
+            segment_controls = st.columns(2)
+            reference_segment = segment_controls[0].selectbox(
+                "Reference segment", segment_values, key="compare_reference_segment"
+            )
+            comparison_segment = segment_controls[1].selectbox(
+                "Comparison segment", segment_values, index=1, key="compare_comparison_segment"
+            )
+        else:
+            st.warning("The selected segment column needs at least two non-missing values in the comparison scope.")
+
+    thresholds = st.columns(2)
+    difference_threshold = float(thresholds[0].number_input(
+        "POP/POD difference threshold", min_value=0.01, value=0.30, step=0.05,
+        help="A focus-brand lead at or above this descriptive threshold becomes a point-of-difference candidate.",
+    ))
+    parity_tolerance = float(thresholds[1].number_input(
+        "Parity tolerance", min_value=0.00, value=0.15, step=0.05,
+        help="Absolute focus-versus-competitor differences within this band become a point-of-parity candidate.",
+    ))
+    st.caption("These thresholds are declared decision rules, not universal academic cut-offs or significance tests.")
+
+    if full_width(st.button, "Run position comparisons", type="primary"):
+        try:
+            config = ComparisonConfig(
+                brand_column=brand_column, attributes=tuple(attributes), focus_brand=focus_brand,
+                wave_column=wave_column, reference_wave=reference_wave, comparison_wave=comparison_wave,
+                segment_column=segment_column, reference_segment=reference_segment,
+                comparison_segment=comparison_segment, respondent_column=respondent_column,
+                weight_column=weight_column, difference_threshold=difference_threshold,
+                parity_tolerance=parity_tolerance,
+            )
+            st.session_state["comparison_result"] = analyze_position_comparisons(frame, config)
+            st.session_state["comparison_config"] = config
+        except Exception as exc:
+            show_error(exc)
+
+    result: PositionComparisonResult | None = st.session_state.get("comparison_result")
+    if result is not None:
+        for warning in result.warnings:
+            st.warning(warning)
+        ownership_tab, pop_tab, wave_tab, segment_tab = st.tabs(
+            ["Association ownership", "POP / POD", "Wave change", "Segment difference"]
+        )
+        with ownership_tab:
+            full_width(st.dataframe, result.association_ownership, hide_index=True)
+            st.caption("Leadership is conditional on the brands and attributes in this file; it is not legal ownership or proof of salience.")
+        with pop_tab:
+            full_width(st.dataframe, result.pop_pod, hide_index=True)
+            st.caption("Candidates should be checked for customer importance, credibility, distinctiveness, and business value.")
+        with wave_tab:
+            if result.wave_change.empty:
+                st.info("Select a wave column and two values to calculate wave changes.")
+            else:
+                full_width(st.dataframe, result.wave_change, hide_index=True)
+                st.caption("Intervals use an independent-samples approximation and are descriptive, not causal.")
+        with segment_tab:
+            if result.segment_change.empty:
+                st.info("Select a segment column and two values to calculate segment differences.")
+            else:
+                full_width(st.dataframe, result.segment_change, hide_index=True)
+                st.caption("Segment differences describe the selected groups; they do not establish why the groups differ.")
+
+        tables = _comparison_tables(result)
+        config = st.session_state.get("comparison_config")
+        metadata = {
+            "product": "PositionSignal", "version": __version__, "source_file": st.session_state.get("source_name"),
+            "source_table": st.session_state.get("active_table"), "source_sha256": st.session_state.get("source_fingerprint"),
+            "comparison_config": config.__dict__ if config else None,
+            "interpretation": "Descriptive comparisons; no causal identification claimed.",
+        }
+        manifest = pd.DataFrame({
+            "property": list(metadata),
+            "value": [json.dumps(value, default=str) if isinstance(value, (list, dict)) else value for value in metadata.values()],
+        })
+        export_tables = {"Manifest": manifest, **tables}
+        st.subheader("Download comparison evidence")
+        downloads = st.columns(3)
+        full_width(
+            downloads[0].download_button, "Excel comparison pack", results_to_excel(export_tables),
+            "positionsignal_comparisons.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            key="compare_download_excel",
+        )
+        full_width(
+            downloads[1].download_button, "CSV comparison pack", tables_to_csv_zip(export_tables),
+            "positionsignal_comparisons.zip", "application/zip", key="compare_download_csv",
+        )
+        full_width(
+            downloads[2].download_button, "JSON comparison pack", results_to_json(tables, metadata),
+            "positionsignal_comparisons.json", "application/json", key="compare_download_json",
+        )
     footer()
 
 
@@ -913,7 +1107,7 @@ def render_methods_limits() -> None:
             - Correlated attributes are allowed but can implicitly give a concept more influence; inspect the profile matrix and correlation circle.
             - A perceptual gap is not demand. The map contains no choice, revenue, feasibility, or causal evidence.
             - Survey weights are accepted as positive respondent-constant values. Complex sample design variance is outside this release.
-            - Raw text, image associations, brand–attribute mention counts, nonmetric proximities, ideal points, longitudinal tracking, and causal modeling are outside v1.
+            - Raw text, image associations, brand–attribute mention counts, nonmetric proximities, ideal points, longitudinal modeling, and causal explanation remain outside this release.
             """
         )
         st.markdown(
@@ -931,7 +1125,8 @@ ROUTES = {
     "Welcome": render_welcome,
     "1 · Data & setup": render_data_setup,
     "2 · Build the map": render_build_map,
-    "3 · Interpret & export": render_interpret_export,
+    "3 · Compare waves & segments": render_position_comparisons,
+    "4 · Interpret & export": render_interpret_export,
     "Methods & limits": render_methods_limits,
 }
 ROUTES[page]()

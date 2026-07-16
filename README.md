@@ -70,6 +70,8 @@ PositionSignal aggregates respondent rows to one brand mean per attribute before
 - **Correct biplot geometry:** displays ordinary brand scores and attribute coefficients with one reciprocal common scaling factor; the two axes are never stretched independently.
 - **Separate correlation circle:** provides actual attribute-component correlations instead of asking users to read main-map arrow angles as literal correlations.
 - **Focus-brand interpretation:** ranks the nearest competitors using the complete selected-attribute space, not only the two-dimensional projection.
+- **Tracking comparisons:** compares declared waves and segments, with independent-sample intervals and repeated-respondent warnings.
+- **Position claims:** reports descriptive association leadership plus configurable points-of-parity/points-of-difference candidates.
 - **Optional uncertainty:** cluster-bootstraps respondents, rebuilds the profiles and PCA, and aligns maps with orthogonal Procrustes rotation before drawing covariance ellipses.
 - **Portable evidence:** produces Excel, CSV ZIP, JSON with an audit trail, a standalone interactive HTML map, and a high-resolution PNG through Plotly's chart toolbar.
 
@@ -98,8 +100,11 @@ No single threshold certifies a map. With exactly three brands, a centered profi
 5. Plot PC1 and PC2 as a row-metric Gabriel biplot: brands are the primary geometry, while attribute arrows show reconstructed directions.
 6. Compare the two-dimensional picture with complete-space distances and representation diagnostics.
 7. When respondent IDs are present and uncertainty is requested, resample respondents—not rows—then align each refitted map before summarizing the coordinate cloud.
+8. When wave or segment fields are declared, compare brand-attribute means and classify association ownership/POP/POD candidates under explicit descriptive thresholds.
 
 PCA signs and quadrants have no intrinsic meaning. Axis helper text summarizes strong associations but does not turn a component into an objectively named construct. Full equations, conventions, and interpretation rules are in [methods and interpretation](docs/methods.md).
+
+Wave/segment differences, association leadership, and POP/POD labels remain conditional on the sampled respondents, competitor set, attributes, weights, and thresholds. They do not establish why perception changed, that an association is legally “owned,” or that a difference affects choice.
 
 ## Run locally
 
@@ -158,7 +163,7 @@ A separately hosted deployment changes the trust boundary: uploads travel to the
 - Correlated or near-duplicate attributes can give one idea extra influence.
 - Ordinary survey weights do not reproduce stratification, primary sampling units, replicate-weight variance, or finite-population corrections.
 - A perceptual gap is not demand, feasibility, differentiation, profitability, or causality.
-- Raw text, images, mention counts, nonmetric proximities, ideal points, longitudinal tracking, choice modeling, and causal analysis are outside version 1.0.
+- Raw text, images, mention counts, nonmetric proximities, ideal points, choice modeling, and causal analysis remain outside the current release. Wave comparisons are descriptive unless supported by a suitable research design.
 
 ## Relationship to the Signal tools
 
