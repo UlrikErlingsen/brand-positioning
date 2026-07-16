@@ -171,6 +171,9 @@ These apps share a visual language but answer different questions:
 - **[DriverSignal](https://github.com/UlrikErlingsen/survey-driver-analysis)** asks which measured experiences move with satisfaction or recommendation scores.
 - **[AllocSignal](https://github.com/UlrikErlingsen/marketing-mix-allocation)** asks where the next marketing budget should go, given response assumptions and constraints.
 - **[GateSignal](https://github.com/UlrikErlingsen/launch-decision-gate)** asks whether a concept should receive the next bounded investment: gates, evidence, scenario economics, and risk triage.
+- **[ExperimentSignal](https://github.com/UlrikErlingsen/experiment-analysis)** asks whether a randomized treatment caused a change worth acting on.
+- **[MeasureSignal](https://github.com/UlrikErlingsen/measurement-validation)** asks whether a multi-item score measures what you think it does.
+- **[TextSignal](https://github.com/UlrikErlingsen/open-text-analysis)** asks what recurring language patterns appear in open-ended responses.
 - **PositionSignal** asks how brands are perceived relative to competitors on a chosen set of attributes.
 
 Perception is not preference. A brand can occupy a distinctive PositionSignal location without winning ChoiceSignal simulations, and a valuable customer group in WorthSignal or SegmentSignal does not automatically perceive the market in the same way.
