@@ -7,6 +7,7 @@ os.environ.setdefault("ARROW_DEFAULT_MEMORY_POOL", "system")
 
 import base64
 import hashlib
+import html
 import inspect
 import json
 import platform
@@ -961,9 +962,9 @@ def render_interpret_export() -> None:
         metric_read = "Highly compressed"
     metrics[3].metric("Map read", metric_read)
     st.markdown(
-        f"<div class='ps-note'><b>{focus_brand}</b> is most similar to <b>{closest['competitor']}</b> across the complete "
-        f"{len(prepared.attributes)}-attribute profile. Its clearest relative high point is <b>{strongest['attribute']}</b>; "
-        f"its clearest relative low point is <b>{weakest['attribute']}</b>. These are comparative descriptions, not preference or demand effects.</div>",
+        f"<div class='ps-note'><b>{html.escape(str(focus_brand))}</b> is most similar to <b>{html.escape(str(closest['competitor']))}</b> across the complete "
+        f"{len(prepared.attributes)}-attribute profile. Its clearest relative high point is <b>{html.escape(str(strongest['attribute']))}</b>; "
+        f"its clearest relative low point is <b>{html.escape(str(weakest['attribute']))}</b>. These are comparative descriptions, not preference or demand effects.</div>",
         unsafe_allow_html=True,
     )
     render_map_summary(
@@ -999,15 +1000,15 @@ def render_interpret_export() -> None:
     st.subheader("Questions worth taking to strategy")
     cards = st.columns(3)
     cards[0].markdown(
-        f"<div class='ps-insight'><b>DEFEND OR PROVE</b><h3>{strongest['attribute']}</h3><p>Is this relative association important to customers, credible in market behavior, and protectable?</p></div>",
+        f"<div class='ps-insight'><b>DEFEND OR PROVE</b><h3>{html.escape(str(strongest['attribute']))}</h3><p>Is this relative association important to customers, credible in market behavior, and protectable?</p></div>",
         unsafe_allow_html=True,
     )
     cards[1].markdown(
-        f"<div class='ps-insight'><b>COMPETITIVE PRESSURE</b><h3>{closest['competitor']}</h3><p>Where do buyers actually distinguish these two profiles—and where is the similarity useful?</p></div>",
+        f"<div class='ps-insight'><b>COMPETITIVE PRESSURE</b><h3>{html.escape(str(closest['competitor']))}</h3><p>Where do buyers actually distinguish these two profiles—and where is the similarity useful?</p></div>",
         unsafe_allow_html=True,
     )
     cards[2].markdown(
-        f"<div class='ps-insight'><b>INVESTIGATE, DON'T ASSUME</b><h3>{weakest['attribute']}</h3><p>Is this a meaningful weakness, a deliberate trade-off, or simply irrelevant to choice?</p></div>",
+        f"<div class='ps-insight'><b>INVESTIGATE, DON'T ASSUME</b><h3>{html.escape(str(weakest['attribute']))}</h3><p>Is this a meaningful weakness, a deliberate trade-off, or simply irrelevant to choice?</p></div>",
         unsafe_allow_html=True,
     )
     st.warning("Empty-looking map space is not proven white space. A gap says no selected brand has that profile; it says nothing about customer demand, feasibility, or profitability.")

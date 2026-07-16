@@ -124,17 +124,18 @@ def load_data(source: str | Path | bytes | BinaryIO, name: str | None = None) ->
 
 
 def safe_for_spreadsheet(frame: pd.DataFrame) -> pd.DataFrame:
-    """Neutralize strings that spreadsheet programs could interpret as formulas."""
+    """Neutralize strings (cell values and column headers) that spreadsheet programs could interpret as formulas."""
     safe = frame.copy()
+
+    def neutralize(value: object) -> object:
+        if not isinstance(value, str):
+            return value
+        cleaned = ILLEGAL_XML_CHARACTERS.sub("", value)
+        return "'" + cleaned if cleaned.lstrip(" \t\r\n").startswith(("=", "+", "-", "@")) else cleaned
+
+    safe.columns = _unique_column_names([neutralize(str(column)) for column in safe.columns])
     for column in safe.columns:
         series = safe[column].astype(object) if isinstance(safe[column].dtype, pd.CategoricalDtype) else safe[column]
-
-        def neutralize(value: object) -> object:
-            if not isinstance(value, str):
-                return value
-            cleaned = ILLEGAL_XML_CHARACTERS.sub("", value)
-            return "'" + cleaned if cleaned.lstrip(" \t\r\n").startswith(("=", "+", "-", "@")) else cleaned
-
         safe[column] = series.map(neutralize)
     return safe
 

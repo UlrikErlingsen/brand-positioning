@@ -4,6 +4,13 @@ All notable changes to PositionSignal are documented here. The project follows [
 
 ## [Unreleased]
 
+## [1.1.1] - 2026-07-16
+
+### Security
+
+- Brand and attribute names from uploaded data are now HTML-escaped before they are rendered in the interpretation summary and insight cards.
+- Excel and CSV exports also neutralize formula-like column headers, the Docker image keeps application code root-owned, and defusedxml hardens workbook XML parsing.
+
 ## [1.1.0] - 2026-07-16
 
 ### Added
