@@ -221,7 +221,8 @@ def masthead() -> None:
 
 def footer() -> None:
     st.markdown(
-        f"<div class='ps-footer'>PositionSignal {__version__}<span>•</span>Local-first analytics<span>•</span>AGPL-3.0-or-later</div>",
+        f"<div class='ps-footer'>PositionSignal v{__version__}<span>◆</span>Perceptual evidence, not market truth"
+        "<span>◆</span>Part of the Signal suite<span>◆</span>AGPL-3.0-or-later</div>",
         unsafe_allow_html=True,
     )
 
