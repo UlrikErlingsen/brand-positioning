@@ -179,13 +179,15 @@ These apps share a visual language but answer different questions:
 - **[ExperimentSignal](https://github.com/UlrikErlingsen/experiment-analysis)** asks whether a randomized treatment caused a change worth acting on.
 - **[MeasureSignal](https://github.com/UlrikErlingsen/measurement-validation)** asks whether a multi-item score measures what you think it does.
 - **[TextSignal](https://github.com/UlrikErlingsen/open-text-analysis)** asks what recurring language patterns appear in open-ended responses.
-- **Pricing-evidence prototype (private pending rename)** asks what price range is supported and how contribution moves.
+- **[TagSignal](https://github.com/UlrikErlingsen/pricing-analysis)** asks what price range is supported and how contribution moves, from assigned-price, historical, or willingness-to-pay evidence.
 - **[RecommendSignal](https://github.com/UlrikErlingsen/recommender-evaluation)** asks which recommendation policy survives honest temporal replay.
+- **[TraceSignal](https://github.com/UlrikErlingsen/journey-path-analysis)** asks how logged customer journeys actually unfold: transitions, path support, drop-off, and Markov removal sensitivity, with no causal channel credit.
+- **[TrackSignal](https://github.com/UlrikErlingsen/brand-tracking)** asks whether brand measures moved across tracking waves, with intervals, multiple-comparison control, and declared practical thresholds.
 - **PositionSignal** asks how brands are perceived relative to competitors on a chosen set of attributes.
 
 Perception is not preference. A brand can occupy a distinctive PositionSignal location without winning ChoiceSignal simulations, and a valuable customer group in WorthSignal or SegmentSignal does not automatically perceive the market in the same way.
 
-See the maintained suite overview at [ulrikerlingsen.com](https://ulrikerlingsen.com). Product labels that have not passed their own publication screen remain outside the public catalog.
+See the maintained suite overview at [ulrikerlingsen.com](https://ulrikerlingsen.com).
 
 ## Primary references
 
