@@ -1,4 +1,4 @@
-"""Regenerate PositionSignal's fictional examples and starter templates.
+"""Regenerate Position Signal's fictional examples and starter templates.
 
 Every record is synthetic. The respondent key is an arbitrary study ID and no
 direct personal information is generated.
@@ -14,6 +14,8 @@ import pandas as pd
 
 ROOT = Path(__file__).resolve().parents[1]
 EXAMPLES = ROOT / "examples"
+# The app loads its demos from copies inside the package, so they also exist in an installed wheel.
+PACKAGED_DEMOS = ROOT / "src" / "positionsignal" / "ui" / "demo"
 SEED = 20260714
 RESPONDENTS = 180
 
@@ -152,7 +154,11 @@ def main() -> None:
     profiles.to_csv(EXAMPLES / "demo_brand_profiles.csv", index=False)
     template.to_csv(EXAMPLES / "ratings_template.csv", index=False)
     _write_excel_template(template, EXAMPLES / "ratings_template.xlsx")
+    PACKAGED_DEMOS.mkdir(exist_ok=True)
+    ratings.to_csv(PACKAGED_DEMOS / "demo_sneaker_ratings.csv", index=False)
+    profiles.to_csv(PACKAGED_DEMOS / "demo_brand_profiles.csv", index=False)
     print(f"Wrote {len(ratings):,} synthetic rating rows and four example files to {EXAMPLES}")
+    print(f"Copied the two demo files into {PACKAGED_DEMOS}")
 
 
 if __name__ == "__main__":

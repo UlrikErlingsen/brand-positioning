@@ -126,3 +126,11 @@ def test_csv_and_excel_templates_round_trip_through_the_app_loader() -> None:
     pd.testing.assert_frame_equal(csv_profiles.profiles, excel_profiles.profiles)
     assert csv_profiles.brands == ["Brand A", "Brand B", "Brand C"]
     assert csv_profiles.attributes == tuple(ATTRIBUTES)
+
+
+@pytest.mark.parametrize("filename", ["demo_sneaker_ratings.csv", "demo_brand_profiles.csv"])
+def test_packaged_demo_copies_match_the_committed_examples(filename: str) -> None:
+    # The app loads the demos from package data so they also work from an installed wheel (Signal Hub).
+    packaged = ROOT / "src" / "positionsignal" / "ui" / "demo" / filename
+    normalized = [path.read_bytes().replace(b"\r\n", b"\n") for path in (packaged, EXAMPLES / filename)]
+    assert normalized[0] == normalized[1]
