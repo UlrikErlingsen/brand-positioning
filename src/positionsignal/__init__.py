@@ -1,3 +1,3 @@
-"""PositionSignal: transparent perceptual maps for brand positioning."""
+"""Position Signal: transparent perceptual maps for brand positioning."""
 
 __version__ = "1.1.1"

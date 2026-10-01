@@ -1,6 +1,6 @@
 # Code of conduct
 
-PositionSignal is intended to be a practical, welcoming open-source project for marketers, researchers, analysts, students, and developers.
+Position Signal is intended to be a practical, welcoming open-source project for marketers, researchers, analysts, students, and developers.
 
 ## Our standard
 
@@ -12,4 +12,4 @@ Harassment, discrimination, threats, sexualized conduct, doxxing, deliberate dis
 
 This standard applies to issues, pull requests, discussions, and other spaces where someone represents the project. Maintainers may edit, hide, reject, or remove contributions and may temporarily or permanently restrict participation when conduct harms the community.
 
-To report sensitive conduct privately, email [code.modular578@passmail.net](mailto:code.modular578@passmail.net) with the subject `[PositionSignal conduct]`. Do not include the report in a public issue.
+To report sensitive conduct privately, email [code.modular578@passmail.net](mailto:code.modular578@passmail.net) with the subject `[Position Signal conduct]`. Do not include the report in a public issue.

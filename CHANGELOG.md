@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to PositionSignal are documented here. The project follows [Semantic Versioning](https://semver.org/).
+All notable changes to Position Signal are documented here. The project follows [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 

@@ -1,10 +1,10 @@
 # Methods and interpretation
 
-PositionSignal turns ratings on named brand attributes into a two-dimensional perceptual map. The map is a compact description of the selected brands and attributes; it is not a universal market truth, a causal model, or evidence that consumers naturally think in exactly two dimensions.
+Position Signal turns ratings on named brand attributes into a two-dimensional perceptual map. The map is a compact description of the selected brands and attributes; it is not a universal market truth, a causal model, or evidence that consumers naturally think in exactly two dimensions.
 
 ## Unit of analysis
 
-The fitted matrix has one row per brand and one column per attribute. If the upload already has one aggregate row per brand, those values are used directly. If the upload contains respondent-brand rows, PositionSignal first calculates a brand mean for each attribute. This aggregate-first design makes the axes describe **between-brand positioning**. Fitting the axes to every individual rating row instead would allow within-brand respondent noise to determine the map.
+The fitted matrix has one row per brand and one column per attribute. If the upload already has one aggregate row per brand, those values are used directly. If the upload contains respondent-brand rows, Position Signal first calculates a brand mean for each attribute. This aggregate-first design makes the axes describe **between-brand positioning**. Fitting the axes to every individual rating row instead would allow within-brand respondent noise to determine the map.
 
 For brand \(b\), attribute \(a\), valid ratings \(y_{rba}\), and optional respondent weight \(w_r\), the profile value is
 
@@ -20,7 +20,7 @@ n^{\mathrm{eff}}_{ba}=\frac{(\sum_r w_r)^2}{\sum_r w_r^2},
 
 which exposes how unequal weights reduce the information in a nominal sample. This is a descriptive effective base, not a full complex-survey variance estimator.
 
-Respondent-level blanks are omitted from the corresponding cell mean. A brand-attribute cell with no usable observation remains missing: PositionSignal never fills it with an invented mean. Depending on the selected policy, an incomplete attribute either stops the analysis or is removed in full. Attributes that do not vary between brands are also removed because they cannot define a direction.
+Respondent-level blanks are omitted from the corresponding cell mean. A brand-attribute cell with no usable observation remains missing: Position Signal never fills it with an invented mean. Depending on the selected policy, an incomplete attribute either stops the analysis or is removed in full. Attributes that do not vary between brands are also removed because they cannot define a direction.
 
 ## Preparation
 
@@ -38,7 +38,7 @@ Highly correlated or duplicated attributes are not statistically invalid, but th
 
 ## Principal components
 
-Let \(X\) be the complete centered or standardized brand-profile matrix. PositionSignal uses a deterministic full singular-value decomposition,
+Let \(X\) be the complete centered or standardized brand-profile matrix. Position Signal uses a deterministic full singular-value decomposition,
 
 \[
 X=UDV^\top.
@@ -52,7 +52,7 @@ The complete brand score matrix is \(T=UD\). Component \(k\) has eigenvalue and 
 e_k=\frac{\lambda_k}{\sum_j\lambda_j}.
 \]
 
-The displayed map uses the first two score columns. PCA signs are mathematically arbitrary, so PositionSignal makes exports reproducible by finding the strongest absolute coefficient on each component and orienting that coefficient positively. If several coefficients tie, the lexicographically first attribute anchors the sign. Mirroring an axis would not change distances or substantive relationships.
+The displayed map uses the first two score columns. PCA signs are mathematically arbitrary, so Position Signal makes exports reproducible by finding the strongest absolute coefficient on each component and orienting that coefficient positively. If several coefficients tie, the lexicographically first attribute anchors the sign. Mirroring an axis would not change distances or substantive relationships.
 
 The axis helper text lists strongly associated attributes on both sides. It is an orientation aid, not an estimated name for a latent construct. `PC1` and `PC2` remain the honest axis names.
 
@@ -64,7 +64,7 @@ The rank-two approximation is
 X_{(2)}=T_{(2)}V_{(2)}^\top.
 \]
 
-Brands therefore use ordinary PCA scores. Their Euclidean distances on the map are the two-dimensional projections of their distances in the complete analysis space. Attribute arrows use the matching PCA coefficients. To make points and arrows legible on one plot, PositionSignal applies reciprocal scalar scaling,
+Brands therefore use ordinary PCA scores. Their Euclidean distances on the map are the two-dimensional projections of their distances in the complete analysis space. Attribute arrows use the matching PCA coefficients. To make points and arrows legible on one plot, Position Signal applies reciprocal scalar scaling,
 
 \[
 G=T_{(2)}/c,
@@ -82,7 +82,7 @@ On this map:
 - a brand in an arrow's direction tends to rate relatively high on that attribute;
 - quadrants have no inherent strategic meaning.
 
-Attribute-arrow angles on the main row-metric map should not be read as literal correlations. For that purpose, PositionSignal provides a separate correlation circle. For standardized PCA, the correlation loading is
+Attribute-arrow angles on the main row-metric map should not be read as literal correlations. For that purpose, Position Signal provides a separate correlation circle. For standardized PCA, the correlation loading is
 
 \[
 L_{ak}=\operatorname{corr}(X_{\cdot a},T_{\cdot k})
@@ -127,7 +127,7 @@ This measures how well the two axes reproduce its variation. The coefficient con
 
 ### Distance fidelity
 
-PositionSignal compares every full-space Euclidean brand distance \(d_{ij}\) with its projected distance \(\hat d_{ij}\). It reports their correlation and normalized distance error
+Position Signal compares every full-space Euclidean brand distance \(d_{ij}\) with its projected distance \(\hat d_{ij}\). It reports their correlation and normalized distance error
 
 \[
 \sqrt{\frac{\sum_{i<j}(d_{ij}-\hat d_{ij})^2}
@@ -150,17 +150,17 @@ when a third component exists. A small \(g_{12}\) means the individual PC1/PC2 d
 
 ## Respondent-cluster bootstrap
 
-Aggregate profiles alone contain no information about respondent sampling variation, so PositionSignal does not manufacture confidence regions for aggregate-only files.
+Aggregate profiles alone contain no information about respondent sampling variation, so Position Signal does not manufacture confidence regions for aggregate-only files.
 
 When respondent IDs are available, each bootstrap iteration samples respondent IDs with replacement and carries **all rows belonging to the sampled respondent** together. This preserves dependence when the same person rated several brands. When respondents belong to independent brand-specific samples, resampling is performed within brand so each brand's sample size is preserved. The app then repeats aggregation, preparation, and PCA from the beginning. Survey weights remain attached to their respondents. At least two independent respondents are required in every included brand–attribute cell; bases below 10 receive a caution.
 
-Bootstrap axes may flip, swap, or rotate even when the underlying configuration is similar. PositionSignal estimates an orthogonal Procrustes rotation from the bootstrap and reference loading matrices, then applies the same rotation to the centered bootstrap brand scores. Reflection and rotation are allowed; scale dilation is not. The aligned cloud for each brand supplies a covariance matrix, from which the app draws the requested chi-squared ellipse around the bootstrap-cloud mean.
+Bootstrap axes may flip, swap, or rotate even when the underlying configuration is similar. Position Signal estimates an orthogonal Procrustes rotation from the bootstrap and reference loading matrices, then applies the same rotation to the centered bootstrap brand scores. Reflection and rotation are allowed; scale dilation is not. The aligned cloud for each brand supplies a covariance matrix, from which the app draws the requested chi-squared ellipse around the bootstrap-cloud mean.
 
-These are **bootstrap uncertainty regions conditional on the selected respondents, brands, attributes, weighting, and preprocessing**. They are not prediction regions, and overlapping or non-overlapping ellipses are not a formal significance test. A complex survey may require stratified, clustered, replicate-weight, or finite-population methods beyond this release. Sparse designs can generate unusable bootstrap maps; PositionSignal reports successful iterations and refuses to draw regions when too few refits succeed.
+These are **bootstrap uncertainty regions conditional on the selected respondents, brands, attributes, weighting, and preprocessing**. They are not prediction regions, and overlapping or non-overlapping ellipses are not a formal significance test. A complex survey may require stratified, clustered, replicate-weight, or finite-population methods beyond this release. Sparse designs can generate unusable bootstrap maps; Position Signal reports successful iterations and refuses to draw regions when too few refits succeed.
 
 ## Wave, segment, ownership, and POP/POD comparisons
 
-For each selected brand and attribute, PositionSignal reports the weighted or unweighted mean and its standard error within the declared scope. Wave change is `comparison wave − reference wave`; segment difference is `comparison segment − reference segment`. Displayed 95% intervals use the independent-samples standard error `sqrt(SE_reference² + SE_comparison²)` and a Welch–Satterthwaite degrees-of-freedom approximation; a normal critical value is the fallback when both estimated standard errors are zero. When respondent IDs overlap across waves, the app warns that this approximation ignores pairing. Complex survey, repeated-measures, and longitudinal models remain outside this release.
+For each selected brand and attribute, Position Signal reports the weighted or unweighted mean and its standard error within the declared scope. Wave change is `comparison wave − reference wave`; segment difference is `comparison segment − reference segment`. Displayed 95% intervals use the independent-samples standard error `sqrt(SE_reference² + SE_comparison²)` and a Welch–Satterthwaite degrees-of-freedom approximation; a normal critical value is the fallback when both estimated standard errors are zero. When respondent IDs overlap across waves, the app warns that this approximation ignores pairing. Complex survey, repeated-measures, and longitudinal models remain outside this release.
 
 Association ownership ranks brands by the current-scope mean for each attribute and reports the leading brand, runner-up, and lead gap. “Ownership” is descriptive shorthand conditional on the selected evidence; it is not trademark ownership, cognitive salience, distinctiveness, or proof of purchase relevance.
 
@@ -172,7 +172,7 @@ For a focus brand, the app compares its mean with the average of the selected co
 - A numerically one-dimensional profile matrix is not forced into a two-axis picture.
 - Treating rating scales as numeric assumes their steps are useful approximate intervals. This is conventional for aggregated multi-item market research, but it remains an assumption.
 - PCA describes linear structure. Curved or respondent-specific perceptual spaces may need other methods.
-- Broadly positive PC1 associations can represent general favorability or halo. PositionSignal describes that pattern rather than automatically removing it.
+- Broadly positive PC1 associations can represent general favorability or halo. Position Signal describes that pattern rather than automatically removing it.
 - Results are conditional on the competitive frame. Adding a brand or attribute changes column centers, standard deviations, and potentially the axes.
 - PCA has no privileged quadrant labels and provides no causal or market-share conclusions.
 - High explained variance does not repair biased samples, vague attributes, low awareness, or poor questionnaire design.

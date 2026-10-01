@@ -1,4 +1,4 @@
-"""Friendly domain errors for the PositionSignal workflow."""
+"""Friendly domain errors for the Position Signal workflow."""
 
 from __future__ import annotations
 
@@ -11,5 +11,5 @@ def friendly_message(exc: Exception) -> str:
     """Return a useful public message without leaking implementation details."""
     if isinstance(exc, DataProblem):
         return str(exc)
-    return "PositionSignal could not finish that step. Check the data and settings, then try again."
+    return "Position Signal could not finish that step. Check the data and settings, then try again."
 

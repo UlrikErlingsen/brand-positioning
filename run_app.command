@@ -12,7 +12,7 @@ if [ -f "$PID_FILE" ] && [ -f "$PORT_FILE" ]; then
   EXISTING_PORT="$(/bin/cat "$PORT_FILE")"
   EXISTING_URL="http://127.0.0.1:${EXISTING_PORT}"
   if /bin/kill -0 "$EXISTING_PID" 2>/dev/null && /usr/bin/curl -fsS "${EXISTING_URL}/_stcore/health" >/dev/null 2>&1; then
-    echo "PositionSignal is already running. Opening it now."
+    echo "Position Signal is already running. Opening it now."
     if [ "${POSITIONSIGNAL_NO_BROWSER:-0}" != "1" ]; then
       /usr/bin/open "$EXISTING_URL"
     fi
@@ -22,14 +22,14 @@ if [ -f "$PID_FILE" ] && [ -f "$PORT_FILE" ]; then
 fi
 
 if ! /usr/bin/env python3 -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 10) else 1)' 2>/dev/null; then
-  echo "PositionSignal needs Python 3.10 or newer."
+  echo "Position Signal needs Python 3.10 or newer."
   echo "Install it from https://www.python.org/downloads/ and try again."
   read -r -p "Press Return to close..."
   exit 1
 fi
 
 if [ ! -x ".venv/bin/python" ]; then
-  echo "Creating PositionSignal's private Python environment..."
+  echo "Creating Position Signal's private Python environment..."
   /usr/bin/env python3 -m venv .venv
 fi
 
@@ -39,13 +39,13 @@ export ARROW_DEFAULT_MEMORY_POOL="${ARROW_DEFAULT_MEMORY_POOL:-system}"
 REQUIREMENTS_HASH="$(/usr/bin/shasum -a 256 requirements.txt | /usr/bin/awk '{print $1}')"
 READY_FILE=".venv/.positionsignal-requirements-${REQUIREMENTS_HASH}"
 if [ ! -f "$READY_FILE" ]; then
-  echo "First launch: downloading PositionSignal's Python packages. This can take a few minutes."
+  echo "First launch: downloading Position Signal's Python packages. This can take a few minutes."
   echo "Later launches will be much faster and can work offline."
   python -m pip --disable-pip-version-check install --prefer-binary -r requirements.txt
   /bin/rm -f .venv/.positionsignal-requirements-* .venv/.positionsignal-ready
   /usr/bin/touch "$READY_FILE"
 else
-  echo "Using the existing PositionSignal environment."
+  echo "Using the existing Position Signal environment."
 fi
 
 if [ -n "${POSITIONSIGNAL_PORT:-}" ]; then
@@ -73,7 +73,7 @@ fi
 URL="http://127.0.0.1:${PORT}"
 MAX_UPLOAD_MB="${POSITIONSIGNAL_MAX_UPLOAD_MB:-200}"
 
-echo "Starting PositionSignal at ${URL}..."
+echo "Starting Position Signal at ${URL}..."
 python -m streamlit run app.py \
   --server.headless=true \
   --server.address=127.0.0.1 \
@@ -97,7 +97,7 @@ trap cleanup EXIT INT TERM
 ATTEMPT=1
 while [ "$ATTEMPT" -le 120 ]; do
   if /usr/bin/curl -fsS "${URL}/_stcore/health" >/dev/null 2>&1; then
-    echo "PositionSignal is ready. Opening your browser..."
+    echo "Position Signal is ready. Opening your browser..."
     if [ "${POSITIONSIGNAL_NO_BROWSER:-0}" != "1" ]; then
       /usr/bin/open "$URL"
     fi
@@ -105,7 +105,7 @@ while [ "$ATTEMPT" -le 120 ]; do
     exit $?
   fi
   if ! /bin/kill -0 "$APP_PID" 2>/dev/null; then
-    echo "PositionSignal stopped before it became ready. Review the message above."
+    echo "Position Signal stopped before it became ready. Review the message above."
     wait "$APP_PID"
     exit $?
   fi
@@ -113,5 +113,5 @@ while [ "$ATTEMPT" -le 120 ]; do
   /bin/sleep 0.25
 done
 
-echo "PositionSignal took too long to start. Review the message above, then try again."
+echo "Position Signal took too long to start. Review the message above, then try again."
 exit 1

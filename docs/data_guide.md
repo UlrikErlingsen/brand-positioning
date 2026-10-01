@@ -1,6 +1,6 @@
 # Data guide
 
-PositionSignal accepts CSV, Excel, or JSON tables in either of two wide layouts:
+Position Signal accepts CSV, Excel, or JSON tables in either of two wide layouts:
 
 1. one already-aggregated row per brand; or
 2. one row per respondent-brand rating occasion.
@@ -40,7 +40,7 @@ Rules:
 - ratings must be numeric or blank;
 - keep the same response direction across an attribute: a larger number should consistently mean “more” of the named quality.
 
-PositionSignal aggregates these rows to one brand mean per attribute before PCA. Supplying respondent IDs also enables respondent-cluster bootstrap uncertainty, provided there are at least 20 distinct respondents and the design is sufficiently complete.
+Position Signal aggregates these rows to one brand mean per attribute before PCA. Supplying respondent IDs also enables respondent-cluster bootstrap uncertainty, provided there are at least 20 distinct respondents and the design is sufficiently complete.
 
 For tracking or subgroup reporting, add optional wave/period and segment columns. Keep labels stable across rows and retain the same brand set, item wording, response anchors, sampling frame, and weighting logic where possible. A respondent appearing in multiple waves should keep the same pseudonymous ID so the app can flag that its simple independent-samples interval ignores pairing. The comparison page is not a longitudinal or repeated-measures model.
 
@@ -48,7 +48,7 @@ For tracking or subgroup reporting, add optional wave/period and segment columns
 
 A weight column is optional. If selected, every retained value must be finite and strictly positive. A respondent's weight must be constant on every row belonging to that respondent. For example, if `R0001` has weight `0.92`, all of that respondent's brand rows must also have `0.92`.
 
-Weights change the brand means. PositionSignal also reports attribute-level Kish effective bases so highly unequal weights are visible. Ordinary expansion weights do not by themselves reproduce stratification, primary sampling units, replicate-weight variance, or finite-population corrections. For complex survey inference, consult the study's survey statistician.
+Weights change the brand means. Position Signal also reports attribute-level Kish effective bases so highly unequal weights are visible. Ordinary expansion weights do not by themselves reproduce stratification, primary sampling units, replicate-weight variance, or finite-population corrections. For complex survey inference, consult the study's survey statistician.
 
 If the study is unweighted, omit the weight column or leave it unselected. Do not enter zero, negative, or blank weights as a way to exclude rows; remove those rows explicitly.
 
@@ -56,7 +56,7 @@ If the study is unweighted, omit the weight column or leave it unselected. Do no
 
 An occasional blank respondent rating is allowed. Each brand-attribute cell is averaged from the available ratings in that cell, and its valid count is reported.
 
-An **empty cell** is different: if no respondent supplied any usable rating for one brand on one attribute, the aggregated matrix is incomplete. PositionSignal never mean-imputes that cell. Choose one of the transparent remedies:
+An **empty cell** is different: if no respondent supplied any usable rating for one brand on one attribute, the aggregated matrix is incomplete. Position Signal never mean-imputes that cell. Choose one of the transparent remedies:
 
 - add or correct the missing source ratings;
 - stop and remove the affected attribute yourself; or
@@ -97,9 +97,9 @@ The example records are entirely fictional and contain no direct personal inform
 
 ## Privacy and research hygiene
 
-PositionSignal needs a pseudonymous respondent key only to keep one person's rows together during bootstrap resampling. It does not need names, email addresses, telephone numbers, postal addresses, open-text comments, or customer account IDs. Remove direct identifiers before upload and avoid encoding them inside `respondent_id`.
+Position Signal needs a pseudonymous respondent key only to keep one person's rows together during bootstrap resampling. It does not need names, email addresses, telephone numbers, postal addresses, open-text comments, or customer account IDs. Remove direct identifiers before upload and avoid encoding them inside `respondent_id`.
 
-When PositionSignal is run locally, analysis occurs on that machine. A separately hosted Streamlit deployment follows the hosting operator's storage, logging, access-control, and retention policies; verify those policies before uploading confidential research.
+When Position Signal is run locally, analysis occurs on that machine. A separately hosted Streamlit deployment follows the hosting operator's storage, logging, access-control, and retention policies; verify those policies before uploading confidential research.
 
 ## Preflight checklist
 

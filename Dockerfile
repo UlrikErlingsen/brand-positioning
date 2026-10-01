@@ -14,7 +14,7 @@ RUN python -m pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
-# PositionSignal does not need root privileges at runtime. The application code
+# Position Signal does not need root privileges at runtime. The application code
 # stays root-owned and read-only; the runtime user only writes to its own home.
 RUN useradd --create-home --uid 10001 positionsignal
 USER positionsignal

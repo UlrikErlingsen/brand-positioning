@@ -1,6 +1,6 @@
 cff-version: 1.2.0
-message: "If PositionSignal supports your research or teaching, please cite this software and the original sources for the methods you use."
-title: "PositionSignal: Open Perceptual Mapping for Brand Positioning"
+message: "If Position Signal supports your research or teaching, please cite this software and the original sources for the methods you use."
+title: "Position Signal: Open Perceptual Mapping for Brand Positioning"
 type: software
 authors:
   - family-names: "Erlingsen"

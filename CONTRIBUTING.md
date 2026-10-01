@@ -1,6 +1,6 @@
-# Contributing to PositionSignal
+# Contributing to Position Signal
 
-Contributions that make PositionSignal clearer, safer, statistically sounder, or easier for marketers are welcome.
+Contributions that make Position Signal clearer, safer, statistically sounder, or easier for marketers are welcome.
 
 ## Development setup
 
@@ -18,14 +18,15 @@ python -m streamlit run app.py
 ## Project structure
 
 ```text
-app.py                    Streamlit workflow and presentation
-src/positionsignal/       Typed data, mapping, plotting, and export logic
-tests/                    Statistical, validation, bootstrap, and I/O tests
+app.py                    Thin standalone entry point (page config, then render())
+src/positionsignal/       Typed data, mapping, comparison, and export logic (no Streamlit or Plotly)
+src/positionsignal/ui/    Streamlit workflow, Plotly views, the synced Signal theme, packaged demos
+tests/                    Statistical, validation, bootstrap, I/O, app, and Signal Hub contract tests
 docs/                     Data contract and method documentation
 examples/                 Synthetic demos and starter templates
 ```
 
-The split is deliberate. Computation under `src/positionsignal/` must remain importable without Streamlit, session state, or UI side effects.
+The split is deliberate. Computation under `src/positionsignal/` must remain importable without Streamlit, Plotly, session state, or UI side effects; only `src/positionsignal/ui/` may import them, and a test enforces it. `ui.render()` never calls `st.set_page_config` or `st.navigation`, and every session-state and widget key goes through `k()` (`"position:..."`) so the app can share a [Signal Hub](https://github.com/UlrikErlingsen/signal-hub) session. `src/positionsignal/ui/signal_theme.py` and `ui/assets/marks/` are synced from Signal Hub; change them there, not here. After changing the generator, run `python scripts/generate_examples.py` so the packaged demo copies stay identical to `examples/`.
 
 ## Method and data rules
 
