@@ -4,6 +4,26 @@ All notable changes to Position Signal are documented here. The project follows 
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-10-02
+
+Signal brand refresh and Signal Hub entry point. The analysis, statistics, data contract and export contents are unchanged.
+
+### Brand
+
+- Display name written **Position Signal** (with a space) in the app, README, docs, launchers, export metadata and citation. Package, file and environment-variable names stay `positionsignal` / `POSITIONSIGNAL_*`.
+- The app uses the shared `signal_theme` module (Organic Signal design, Brand family colour `#b2622d`, Figtree): sidebar lockup, masthead, hero, cards, notes, page headers, footer and the mark as favicon replace the pasted styles.
+- Charts use the per-app Signal Plotly template; the old palette maps to theme tokens with the same meaning (focus brand and retained components in the family colour, other brands muted, below/above-market on the shared diverging scale).
+- New banner, social preview and marks in `assets/`; the old banner SVG is removed. `.streamlit/config.toml` uses the family colours.
+- README follows the Signal template; bug-report and feature-request issue templates added.
+
+### Signal Hub contract
+
+- `positionsignal.ui` exposes `APP_INFO` and `render()`, so Signal Hub can embed the app; `app.py` is now a thin standalone entry point.
+- All session-state and widget keys are namespaced `position:` (including the page selector); **Clear data and results** clears only this app's state.
+- The Plotly views moved from `positionsignal.plotting` to `positionsignal.ui.plotting`. `streamlit` and `plotly` moved to a `ui` extra (also in `test`); the analysis core installs without them. `requirements.txt` still lists everything.
+- The fictional demos ship as package data, so they also load from an installed wheel.
+- New tests: no Streamlit/Plotly import outside `positionsignal.ui`, `render()` runs from a script without a page config, every widget key is namespaced, and render and demos work from a copied package outside the repository.
+
 ## [1.1.1] - 2026-07-16
 
 ### Security
