@@ -26,7 +26,7 @@ docs/                     Data contract and method documentation
 examples/                 Synthetic demos and starter templates
 ```
 
-The split is deliberate. Computation under `src/positionsignal/` must remain importable without Streamlit, Plotly, session state, or UI side effects; only `src/positionsignal/ui/` may import them, and a test enforces it. `ui.render()` never calls `st.set_page_config` or `st.navigation`, and every session-state and widget key goes through `k()` (`"position:..."`) so the app can share a [Signal Hub](https://github.com/UlrikErlingsen/signal-hub) session. `src/positionsignal/ui/signal_theme.py` and `ui/assets/marks/` are synced from Signal Hub; change them there, not here. After changing the generator, run `python scripts/generate_examples.py` so the packaged demo copies stay identical to `examples/`.
+The split is deliberate. Computation under `src/positionsignal/` must remain importable without Streamlit, Plotly, session state, or UI side effects; only `src/positionsignal/ui/` may import them, and a test enforces it. `ui.render()` never calls `st.set_page_config` or `st.navigation`, and every session-state and widget key goes through `k()` (`"position:..."`) so the app can share a [Signal Hub](https://github.com/UlrikErlingsen/signal-hub) session. `src/positionsignal/ui/signal_theme.py`, `ui/signal_font.py` (embedded Figtree) and `ui/assets/marks/` are synced from Signal Hub; change them there, not here. After changing the generator, run `python scripts/generate_examples.py` so the packaged demo copies stay identical to `examples/`.
 
 ## Method and data rules
 

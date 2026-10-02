@@ -58,14 +58,16 @@ Important limitations:
 
 ## Try the demo in three minutes
 
-1. Start the app and click **Start with a fictional market** on the welcome page (or **Demo · sneaker ratings** in the sidebar). The demo contains 180 fictional respondents, six fictional brands, and eight 1-to-7 attributes.
-2. On **1 · Data & setup**, keep the suggested brand, respondent ID, sample-weight, and attribute roles. Keep **Remove that attribute from every brand (recommended)** as the empty-cell policy, then click **Save this data setup**.
-3. On **2 · Build the map**, choose the brand to highlight and keep **Equal influence (standardize; recommended)**. Leave bootstrap uncertainty off for this quick run and click **Build perceptual map**.
-4. Read the map, variance retained, focus-brand fit, nearest full-profile competitor, distance stress, correlation circle, scree plot, and profile matrix.
-5. Click **Interpret this position**. Review the focus-brand comparison and the warning that apparent white space is not proven opportunity.
-6. Under **Download the evidence**, choose the Excel, CSV ZIP, JSON, or standalone interactive HTML export.
+The app opens with a **fictional** sneaker market already loaded: 180 made-up respondents, six made-up brands, and eight 1-to-7 attributes, with the suggested data setup saved and a default map built. No upload is needed to see results.
 
-The demo is deliberately useful but imperfect. It is deterministic synthetic data, contains no real respondents, and should not be read as evidence about an actual sneaker market. **Demo · brand summary** loads the same six fictional brands as aggregate profiles.
+1. Start the app. The welcome page confirms the preloaded demo; click **See the fictional market map** (or open **2 · Build the map** in the sidebar).
+2. Read the map, variance retained, focus-brand fit, nearest full-profile competitor, distance stress, correlation circle, scree plot, and profile matrix. To change the highlighted brand, scaling, or bootstrap uncertainty, adjust the controls and click **Build perceptual map** again.
+3. Open **1 · Data & setup** to see the roles the demo uses: the suggested brand, respondent ID, sample-weight, and attribute columns, with **Remove that attribute from every brand (recommended)** as the empty-cell policy.
+4. Click **Interpret this position** (or open **4 · Interpret & export**). Review the focus-brand comparison and the warning that apparent white space is not proven opportunity.
+5. Under **Download the evidence**, choose the Excel, CSV ZIP, JSON, or standalone interactive HTML export.
+6. On **3 · Compare waves & segments**, click **Run position comparisons** for association ownership and POP/POD candidates.
+
+The demo is deliberately useful but imperfect. It is deterministic synthetic data, contains no real respondents, and should not be read as evidence about an actual sneaker market. **Demo · sneaker ratings** in the sidebar reloads it; **Demo · brand summary** loads the same six fictional brands as aggregate profiles. Uploading your own file replaces the demo, and **Clear data and results** empties the app.
 
 ## Data contract
 

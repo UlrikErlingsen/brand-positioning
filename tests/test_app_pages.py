@@ -20,13 +20,86 @@ def _button(buttons, label: str):
 
 
 @pytest.mark.parametrize("page", PAGES)
-def test_every_page_renders_without_data(page: str) -> None:
+def test_every_page_renders_on_first_open(page: str) -> None:
     app = AppTest.from_file(APP, default_timeout=30)
     app.run()
     app.sidebar.radio[0].set_value(page).run()
 
     assert not app.exception, [error.value for error in app.exception]
     assert app.sidebar.radio[0].value == page
+    assert app.session_state["position:source_name"] == "demo_sneaker_ratings.csv"
+
+
+def test_fresh_session_opens_with_the_fictional_demo_mapped() -> None:
+    app = AppTest.from_file(APP, default_timeout=60)
+    app.run()
+
+    assert not app.exception, [error.value for error in app.exception]
+    assert app.sidebar.radio[0].value == "Welcome"
+    assert app.session_state["position:source_name"] == "demo_sneaker_ratings.csv"
+    body = "\n".join(str(markdown.value) for markdown in app.markdown)
+    assert "fictional sneaker market is already loaded and mapped" in body
+    setup = app.session_state["position:setup"]
+    assert setup["respondent_column"] == "respondent_id"
+    assert setup["weight_column"] == "sample_weight"
+    assert len(setup["attributes"]) == 8
+    result = app.session_state["position:map_result"]
+    assert len(result.brand_coordinates) == 6
+    assert app.session_state["position:bootstrap_result"] is None
+
+    # The map page shows results without clicking Save or Build.
+    app.sidebar.radio[0].set_value("2 · Build the map").run()
+    assert not app.exception, [error.value for error in app.exception]
+    assert any(metric.label == "Variance in 2-D" for metric in app.metric)
+    assert len(app.get("plotly_chart")) >= 1
+
+    app.sidebar.radio[0].set_value("4 · Interpret & export").run()
+    assert not app.exception, [error.value for error in app.exception]
+    assert any(metric.label == "Closest profile" for metric in app.metric)
+    assert any(button.label == "Excel evidence pack" for button in app.get("download_button"))
+
+
+def test_welcome_button_opens_the_preloaded_map() -> None:
+    app = AppTest.from_file(APP, default_timeout=60)
+    app.run()
+    _button(app.button, "See the fictional market map").click().run()
+
+    assert not app.exception, [error.value for error in app.exception]
+    assert app.sidebar.radio[0].value == "2 · Build the map"
+    assert any(metric.label == "Variance in 2-D" for metric in app.metric)
+
+
+def test_an_upload_replaces_the_preloaded_demo() -> None:
+    profiles = (Path(__file__).parents[1] / "examples" / "demo_brand_profiles.csv").read_bytes()
+    app = AppTest.from_file(APP, default_timeout=60)
+    app.run()
+    assert app.session_state["position:map_result"] is not None
+
+    app.sidebar.file_uploader[0].set_value(("my_profiles.csv", profiles, "text/csv")).run()
+
+    assert not app.exception, [error.value for error in app.exception]
+    assert app.session_state["position:source_name"] == "my_profiles.csv"
+    assert app.session_state["position:map_result"] is None  # the demo map does not survive new data
+    assert app.session_state["position:profile_data"] is None
+    assert app.sidebar.radio[0].value == "1 · Data & setup"
+    assert any(metric.label == "Rows" and metric.value == "6" for metric in app.metric)
+    app.run()
+    assert app.session_state["position:source_name"] == "my_profiles.csv"
+
+
+def test_clearing_data_does_not_preload_the_demo_again() -> None:
+    app = AppTest.from_file(APP, default_timeout=60)
+    app.run()
+    _button(app.sidebar.button, "Clear data and results").click().run()
+
+    assert not app.exception, [error.value for error in app.exception]
+    assert app.session_state["position:tables"] is None
+    for page in PAGES:
+        app.sidebar.radio[0].set_value(page).run()
+        assert not app.exception, [error.value for error in app.exception]
+        assert app.session_state["position:tables"] is None
+    _button(app.sidebar.button, "Demo · sneaker ratings").click().run()
+    assert app.session_state["position:source_name"] == "demo_sneaker_ratings.csv"
 
 
 @pytest.mark.parametrize(

@@ -122,15 +122,17 @@ def test_render_runs_from_a_script_without_set_page_config() -> None:
     assert f"Position Signal v{__version__}" in body
 
 
-def test_render_loads_the_packaged_demo_and_navigates() -> None:
+def test_render_preloads_the_packaged_demo_and_opens_its_map() -> None:
     app = AppTest.from_string(RENDER_SCRIPT, default_timeout=120)
     app.run()
-    _button(app.button, "Start with a fictional market").click().run()
+    assert app.session_state["position:source_name"] == "demo_sneaker_ratings.csv"
+    assert app.session_state["position:map_result"] is not None
+    _button(app.button, "See the fictional market map").click().run()
 
     assert not app.exception, [error.value for error in app.exception]
-    assert app.sidebar.radio[0].value == "1 · Data & setup"
+    assert app.sidebar.radio[0].value == "2 · Build the map"
     assert app.session_state["position:source_name"] == "demo_sneaker_ratings.csv"
-    assert any(metric.label == "Rows" and metric.value == "1,080" for metric in app.metric)
+    assert any(metric.label == "Variance in 2-D" for metric in app.metric)
 
 
 @pytest.mark.parametrize("page", PAGES)
@@ -218,6 +220,8 @@ def test_render_and_demos_work_from_an_installed_package_without_the_repo(tmp_pa
         f"assert ui_app.__file__.startswith({str(site)!r}), ui_app.__file__\n"
         f"app = AppTest.from_string({RENDER_SCRIPT!r}, default_timeout=120)\n"
         "app.run()\n"
+        "assert not app.exception, [e.value for e in app.exception]\n"
+        "assert app.session_state['position:map_result'] is not None, 'demo not preloaded'\n"
         "for label in ('Demo · sneaker ratings', 'Demo · brand summary'):\n"
         "    next(b for b in app.sidebar.button if b.label == label).click().run()\n"
         "    assert not app.exception, [e.value for e in app.exception]\n"

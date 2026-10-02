@@ -63,6 +63,9 @@ def k(name: str) -> str:
 
 # The fictional demos ship inside the package (copies of examples/), so they also load from an installed wheel.
 DEMO_DATA = Path(__file__).resolve().parent / "demo"
+# Opened automatically on first run, with its default setup saved and its default map built, so every page shows
+# results before anything is uploaded. It is the respondent-level demo, so uncertainty and comparisons work too.
+PRELOADED_DEMO = "demo_sneaker_ratings.csv"
 SIDEBAR_TAGLINE = "See where brands stand."
 MASTHEAD_KICKER = "OPEN PERCEPTUAL MAPPING"
 MASTHEAD_PROMISES = ["Local-first", "Explainable", "Open source"]
@@ -115,6 +118,16 @@ def show_error(exc: Exception) -> None:
 def _ensure_state() -> None:
     for name, default in STATE_DEFAULTS:
         st.session_state.setdefault(k(name), default)
+    # First run only: "Clear data and results" keeps the app empty instead of preloading the demo again.
+    if not st.session_state.get(k("demo_preloaded")):
+        st.session_state[k("demo_preloaded")] = True
+        if not st.session_state.get(k("tables")):
+            try:
+                preload_demo()
+            except Exception as exc:
+                for name, default in STATE_DEFAULTS:
+                    st.session_state[k(name)] = default
+                show_error(exc)
 
 
 def _forget_data_widgets() -> None:
@@ -152,6 +165,46 @@ def load_demo(filename: str) -> None:
     raw = (DEMO_DATA / filename).read_bytes()
     set_loaded(load_data(raw, name=filename), hashlib.sha256(raw).hexdigest())
     go_to("1 · Data & setup")
+
+
+def _default_setup(frame: pd.DataFrame) -> dict[str, object]:
+    """The roles page 1 suggests for a fresh table: inferred brand, respondent and weight, first 12 attributes."""
+    columns = [str(column) for column in frame.columns]
+    inferred_brand = infer_brand_column(frame)
+    brand_column = inferred_brand if inferred_brand in columns else columns[0]
+    respondent_column = infer_respondent_column(frame, brand_column)
+    if respondent_column not in columns or respondent_column == brand_column:
+        respondent_column = None
+    weight_column = infer_weight_column(frame)
+    if weight_column not in columns or weight_column in {brand_column, respondent_column}:
+        weight_column = None
+    candidates = numeric_candidates(frame, [column for column in (brand_column, respondent_column, weight_column) if column])
+    return {
+        "brand_column": brand_column, "respondent_column": respondent_column, "weight_column": weight_column,
+        "attributes": candidates[: min(12, len(candidates))], "missing_policy": "drop_attributes",
+    }
+
+
+def preload_demo() -> None:
+    """Load the fictional demo, save its suggested setup and build the default map (standardized, no bootstrap).
+
+    Uses the same functions and defaults as the Save and Build buttons, without changing pages.
+    """
+    raw = (DEMO_DATA / PRELOADED_DEMO).read_bytes()
+    set_loaded(load_data(raw, name=PRELOADED_DEMO), hashlib.sha256(raw).hexdigest())
+    frame = current_frame()
+    roles = _default_setup(frame)
+    prepared = prepare_brand_profiles(frame, **roles)
+    result = fit_perceptual_map(prepared.profiles, scale_attributes=True)
+    st.session_state[k("profile_data")] = prepared
+    st.session_state[k("setup")] = {**roles, "attributes": list(prepared.attributes)}
+    st.session_state[k("map_result")] = result
+    st.session_state[k("bootstrap_result")] = None
+    st.session_state[k("map_settings")] = {
+        "focus_brand": prepared.brands[0], "scale_attributes": True,
+        "show_vectors": True, "vector_limit": min(10, len(prepared.attributes)),
+        "bootstrap": False, "bootstrap_iterations": 0, "confidence": None, "random_seed": None,
+    }
 
 
 def current_frame() -> pd.DataFrame | None:
@@ -206,6 +259,13 @@ def render_welcome() -> None:
         ),
         pills=["Excel & CSV", "No account", "Transparent PCA", "Exportable evidence"],
     )
+    if st.session_state.get(k("source_name")) == PRELOADED_DEMO and st.session_state.get(k("map_result")) is not None:
+        sig.note(
+            "info",
+            "**A fictional sneaker market is already loaded and mapped:** 180 made-up respondents rating six made-up "
+            "brands on eight attributes. Open **2 · Build the map** or **4 · Interpret & export** to see the results, "
+            "or upload your own file in the sidebar to replace the demo.",
+        )
     sig.note("warn", CAUTION)
     sig.cards(
         [
@@ -225,9 +285,10 @@ def render_welcome() -> None:
             "a demand forecast, a segmentation model, or proof of causal positioning. Use the map to frame strategic "
             "questions, then test those questions with customers and market outcomes."
         )
-    if full_width(st.button, "Start with a fictional market", type="primary", key=k("start_demo")):
+    if full_width(st.button, "See the fictional market map", type="primary", key=k("start_demo")):
         try:
-            load_demo("demo_sneaker_ratings.csv")
+            preload_demo()
+            go_to("2 · Build the map")
             st.rerun()
         except Exception as exc:
             show_error(exc)
@@ -982,7 +1043,10 @@ def _sidebar_data() -> None:
             st.rerun()
         except Exception as exc:
             show_error(exc)
-    st.caption("Fictional data, built to show a useful but imperfect map.")
+    st.caption(
+        "Fictional data, built to show a useful but imperfect map. The sneaker demo opens preloaded; "
+        "an upload replaces it."
+    )
 
     tables = st.session_state.get(k("tables"))
     if tables:
@@ -999,6 +1063,7 @@ def _sidebar_data() -> None:
         st.caption(f"Loaded: {st.session_state[k('source_name')]} · {len(frame):,} rows · {len(frame.columns)} columns")
         if full_width(st.button, "Clear data and results", key=k("clear_data")):
             _clear_namespace()
+            st.session_state[k("demo_preloaded")] = True  # stay empty; the demo buttons bring a demo back
             st.rerun()
 
 
