@@ -23,6 +23,7 @@ import streamlit as st
 from positionsignal import __version__
 from positionsignal.comparison import ComparisonConfig, PositionComparisonResult, analyze_position_comparisons
 from positionsignal.errors import DataProblem, friendly_message
+from positionsignal import limits
 from positionsignal.io import LoadedData, load_data, results_to_excel, results_to_json, tables_to_csv_zip
 from positionsignal.mapping import (
     BootstrapResult,
@@ -207,6 +208,44 @@ def preload_demo() -> None:
     }
 
 
+def frame_audit(frame: pd.DataFrame) -> dict[str, object]:
+    """Column audit for the active table, computed once per loaded file so reruns stay fast on large files."""
+    key = (st.session_state.get(k("source_fingerprint")), st.session_state.get(k("active_table")), id(frame), frame.shape)
+    cached = st.session_state.get(k("frame_audit"))
+    if isinstance(cached, dict) and cached.get("key") == key:
+        return cached
+    audit: dict[str, object] = {
+        "key": key,
+        "missing_cells": int(frame.isna().sum().sum()),
+        "pii": likely_pii_columns(frame),
+        "quality": data_quality_report(frame),
+        "numeric": numeric_candidates(frame),
+    }
+    st.session_state[k("frame_audit")] = audit
+    return audit
+
+
+def audited_candidates(frame: pd.DataFrame, excluded: list[str]) -> list[str]:
+    blocked = set(excluded)
+    return [column for column in frame_audit(frame)["numeric"] if column not in blocked]
+
+
+def upload_limit_note() -> str:
+    """The upload limit that applies here: a demo cap online, otherwise only the Streamlit upload setting."""
+    if limits.is_public():
+        return limits.demo_message(
+            f"Files up to {limits.DEMO_MAX_UPLOAD_MB} MB and {limits.DEMO_MAX_TABLE_ROWS:,} rows."
+        )
+    try:
+        server_mb = int(st.get_option("server.maxUploadSize"))
+    except Exception:  # pragma: no cover - the option exists in every supported Streamlit version
+        server_mb = 10_000
+    return (
+        f"No built-in data limit: your computer's memory is the limit. The uploader accepts files up to "
+        f"{server_mb:,} MB (set POSITIONSIGNAL_MAX_UPLOAD_MB before launch to change it). CSV reads fastest."
+    )
+
+
 def current_frame() -> pd.DataFrame | None:
     tables = st.session_state.get(k("tables"))
     if not tables:
@@ -307,15 +346,18 @@ def render_data_setup() -> None:
         template_panel()
         return
 
+    audit = frame_audit(frame)
     metrics = st.columns(4)
     metrics[0].metric("Rows", f"{len(frame):,}")
     metrics[1].metric("Columns", f"{len(frame.columns):,}")
-    metrics[2].metric("Missing cells", f"{int(frame.isna().sum().sum()):,}")
-    metrics[3].metric("Possible PII fields", f"{len(likely_pii_columns(frame))}")
+    metrics[2].metric("Missing cells", f"{audit['missing_cells']:,}")
+    metrics[3].metric("Possible PII fields", f"{len(audit['pii'])}")
     with st.expander("Preview and data-quality audit", expanded=False):
         full_width(st.dataframe, frame.head(30), hide_index=True)
-        full_width(st.dataframe, data_quality_report(frame), hide_index=True)
-    pii = likely_pii_columns(frame)
+        if len(frame) > 30:
+            st.caption(f"Showing the first 30 of {len(frame):,} rows; every calculation uses all rows.")
+        full_width(st.dataframe, audit["quality"], hide_index=True)
+    pii = list(audit["pii"])
     if pii:
         st.warning("Direct identifiers are unnecessary for positioning. Remove or ignore: " + ", ".join(pii) + ".")
 
@@ -342,7 +384,7 @@ def render_data_setup() -> None:
         key=k("setup_weight_column"),
     )
     weight_column = None if weight_column == NONE else weight_column
-    candidates = numeric_candidates(frame, [column for column in (brand_column, respondent_column, weight_column) if column])
+    candidates = audited_candidates(frame, [column for column in (brand_column, respondent_column, weight_column) if column])
     prior_setup = st.session_state.get(k("setup")) or {}
     prior_attributes = [column for column in prior_setup.get("attributes", []) if column in candidates]
     attributes = st.multiselect(
@@ -361,11 +403,12 @@ def render_data_setup() -> None:
 
     if full_width(st.button, "Save this data setup", type="primary", key=k("setup_save")):
         try:
-            prepared = prepare_brand_profiles(
-                frame, brand_column=brand_column, attributes=attributes,
-                respondent_column=respondent_column, weight_column=weight_column,
-                missing_policy=missing_policy,
-            )
+            with st.spinner("Aggregating the ratings…"):
+                prepared = prepare_brand_profiles(
+                    frame, brand_column=brand_column, attributes=attributes,
+                    respondent_column=respondent_column, weight_column=weight_column,
+                    missing_policy=missing_policy,
+                )
             st.session_state[k("profile_data")] = prepared
             st.session_state[k("setup")] = {
                 "brand_column": brand_column, "respondent_column": respondent_column,
@@ -391,6 +434,11 @@ def render_data_setup() -> None:
             st.warning("With exactly three brands, PCA can retain 100% in two dimensions automatically. That is geometry, not proof of a strong map.")
         if len(prepared.brands) < 5:
             st.info("The map can run, but five or more brands usually give a more useful competitive frame.")
+        if len(prepared.brands) > limits.DEMO_MAX_BRANDS or len(prepared.attributes) > limits.DEMO_MAX_ATTRIBUTES:
+            st.info(
+                f"{len(prepared.brands)} brands × {len(prepared.attributes)} attributes will map, but labels crowd "
+                "beyond about 60 brands or 40 attributes. Keep the brands and attributes relevant to the decision."
+            )
         minimum_base = int(prepared.counts.loc[:, list(prepared.attributes)].min().min())
         if prepared.has_respondents and minimum_base < 10:
             st.warning(
@@ -500,7 +548,12 @@ def render_build_map() -> None:
                 key=k("build_bootstrap"),
             )
             if use_bootstrap:
-                iterations = st.slider("Bootstrap iterations", 200, 2000, 500, step=100, key=k("build_iterations"))
+                most = limits.max_bootstrap_iterations() or 2000
+                iterations = st.slider(
+                    "Bootstrap iterations", 200, most, min(500, most), step=100, key=k("build_iterations"),
+                )
+                if limits.is_public():
+                    st.caption(limits.demo_message(f"At most {most:,} iterations."))
                 confidence = st.select_slider(
                     "Uncertainty ellipse level", options=[0.80, 0.90, 0.95], value=0.90,
                     format_func=lambda value: f"{value:.0%}", key=k("build_confidence"),
@@ -517,10 +570,18 @@ def render_build_map() -> None:
                 result = fit_perceptual_map(prepared.profiles, scale_attributes=scale_attributes)
             bootstrap_result = None
             if use_bootstrap:
-                with st.spinner(f"Refitting and aligning {iterations:,} respondent bootstrap maps…"):
+                bar = st.progress(0.0, text=f"Refitting and aligning {iterations:,} respondent bootstrap maps…")
+
+                def report(done: int, total: int) -> None:
+                    bar.progress(done / total, text=f"Bootstrap maps: {done:,} of {total:,}")
+
+                try:
                     bootstrap_result = bootstrap_respondent_maps(
                         prepared, result, iterations=iterations, confidence=confidence, random_state=seed,
+                        progress=report,
                     )
+                finally:
+                    bar.empty()
             st.session_state[k("map_result")] = result
             st.session_state[k("bootstrap_result")] = bootstrap_result
             st.session_state[k("map_settings")] = {
@@ -637,7 +698,7 @@ def render_position_comparisons() -> None:
     )
     segment_column = None if segment_column == NONE else segment_column
 
-    candidates = numeric_candidates(
+    candidates = audited_candidates(
         frame, [column for column in (brand_column, respondent_column, weight_column, wave_column, segment_column) if column]
     )
     prior_attributes = [column for column in setup.get("attributes", []) if column in candidates]
@@ -704,7 +765,8 @@ def render_position_comparisons() -> None:
                 weight_column=weight_column, difference_threshold=difference_threshold,
                 parity_tolerance=parity_tolerance,
             )
-            st.session_state[k("comparison_result")] = analyze_position_comparisons(frame, config)
+            with st.spinner("Comparing the declared groups…"):
+                st.session_state[k("comparison_result")] = analyze_position_comparisons(frame, config)
             st.session_state[k("comparison_config")] = config
         except Exception as exc:
             show_error(exc)
@@ -1013,14 +1075,16 @@ def _sidebar_data() -> None:
     uploaded = st.file_uploader(
         "CSV, Excel, or JSON", type=["csv", "xlsx", "xls", "xlsm", "json"], key=k(f"upload_{epoch}"),
     )
+    st.caption(upload_limit_note())
     if uploaded is not None:
         identity = (str(getattr(uploaded, "file_id", "")), uploaded.name, int(getattr(uploaded, "size", 0)))
         st.session_state[k("uploader_had_file")] = True
         if st.session_state.get(k("upload_identity")) != identity:
             try:
-                raw = uploaded.getvalue()
-                fingerprint = hashlib.sha256(uploaded.name.encode() + b"\0" + raw).hexdigest()
-                set_loaded(load_data(raw, name=uploaded.name), fingerprint)
+                with st.spinner("Reading the file… large files can take a little while."):
+                    raw = uploaded.getvalue()
+                    fingerprint = hashlib.sha256(uploaded.name.encode() + b"\0" + raw).hexdigest()
+                    set_loaded(load_data(raw, name=uploaded.name), fingerprint)
                 st.session_state[k("upload_identity")] = identity
                 st.session_state[k("upload_epoch")] = epoch + 1
                 st.session_state[k("uploader_had_file")] = False
