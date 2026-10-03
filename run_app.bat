@@ -37,13 +37,14 @@ if not exist ".venv\.positionsignal-requirements-%REQ_HASH%" (
 
 if not defined ARROW_DEFAULT_MEMORY_POOL set "ARROW_DEFAULT_MEMORY_POOL=system"
 if not defined POSITIONSIGNAL_PORT set "POSITIONSIGNAL_PORT=8501"
+if not defined POSITIONSIGNAL_MAX_UPLOAD_MB set "POSITIONSIGNAL_MAX_UPLOAD_MB=10000"
 
 echo Starting Position Signal at http://127.0.0.1:%POSITIONSIGNAL_PORT% ...
 ".venv\Scripts\python.exe" -m streamlit run app.py ^
   --server.headless=false ^
   --server.address=127.0.0.1 ^
   --server.port=%POSITIONSIGNAL_PORT% ^
-  --server.maxUploadSize=200 ^
+  --server.maxUploadSize=%POSITIONSIGNAL_MAX_UPLOAD_MB% ^
   --server.fileWatcherType=none ^
   --browser.gatherUsageStats=false
 

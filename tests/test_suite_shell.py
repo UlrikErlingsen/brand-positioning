@@ -146,6 +146,14 @@ def test_runtime_scaffolding_is_private_and_health_checked() -> None:
     assert "8501" in dockerfile
     assert "--browser.gatherUsageStats=false" in launcher
     assert "POSITIONSIGNAL_PORT" in launcher
+    # No built-in data limit locally: Streamlit's uploader takes 10,000 MB unless the launch variable says otherwise.
+    windows_launcher = (ROOT / "run_app.bat").read_text(encoding="utf-8")
+    assert "maxUploadSize = 10000" in config
+    assert 'MAX_UPLOAD_MB="${POSITIONSIGNAL_MAX_UPLOAD_MB:-10000}"' in launcher
+    assert 'set "POSITIONSIGNAL_MAX_UPLOAD_MB=10000"' in windows_launcher
+    assert "--server.maxUploadSize=%POSITIONSIGNAL_MAX_UPLOAD_MB%" in windows_launcher
+    assert "STREAMLIT_SERVER_MAX_UPLOAD_SIZE=10000" in dockerfile
+    assert "--server.maxUploadSize" not in dockerfile
     assert 'python-version: ["3.10", "3.11", "3.12", "3.13"]' in workflow
     for template in ("bug_report.yml", "feature_request.yml", "config.yml"):
         text = (ROOT / ".github" / "ISSUE_TEMPLATE" / template).read_text(encoding="utf-8")
