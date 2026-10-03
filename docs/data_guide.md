@@ -74,7 +74,7 @@ Good attribute names describe one direction, such as `innovative`, `comfortable`
 
 Do not include several near-duplicate attributes unless the repeated weighting is intentional. `premium`, `high_end`, and `exclusive` can make one idea dominate the solution. Conversely, attributes with no meaningful brand variation add no positioning information.
 
-The current release supports at most 40 selected attributes and 60 brands in one map. Five or more brands and several distinct attributes generally make a more informative strategic display, although the mathematical minimum is three brands and two attributes.
+Run locally there is no limit on brands, attributes, rows, or file size; maps with more than about 60 brands or 40 attributes still run but their labels crowd, and the public demo caps them at 60 and 40. Five or more brands and several distinct attributes generally make a more informative strategic display, although the mathematical minimum is three brands and two attributes.
 
 ## Templates and examples
 
@@ -93,7 +93,7 @@ The example records are entirely fictional and contain no direct personal inform
 - Excel: place the table in a simple rectangular sheet with one header row. Avoid merged cells, formulas that return errors, subtotals, and notes above the header.
 - JSON: use a list of row objects, or an object whose values are named lists of row objects.
 - Numeric decimal separators must be readable as numbers in the chosen file format.
-- The uploader accepts `.csv`, `.xlsx`, `.xls`, `.xlsm`, and `.json` within its configured size limits.
+- The uploader accepts `.csv`, `.xlsx`, `.xls`, `.xlsm`, and `.json`. Run locally there is no built-in size limit (memory is the limit); the public demo applies demo limits.
 
 ## Privacy and research hygiene
 

@@ -43,7 +43,7 @@ Accept exactly two wide layouts:
 
 Hard requirements and checks:
 
-- At least **3 brands** and **2 attributes that vary between brands**. Warn that with exactly 3 brands, the centered profile matrix has rank at most 2, so "100% variance retained" is automatic geometry, not evidence of a strong map. Five or more relevant brands usually make a more informative frame. Stay within roughly 60 brands and 40 attributes.
+- At least **3 brands** and **2 attributes that vary between brands**. Warn that with exactly 3 brands, the centered profile matrix has rank at most 2, so "100% variance retained" is automatic geometry, not evidence of a strong map. Five or more relevant brands usually make a more informative frame. Beyond roughly 60 brands or 40 attributes the map still computes, but labels crowd; say so.
 - Treat rating steps as approximately interval-scaled (conventional for aggregated market research) and state that this is an assumption.
 - Report missingness and any constant attributes before fitting. Never invent values for an empty brand-attribute cell: if a brand has no valid rating for an attribute, either stop or **remove that attribute for every brand** (the app's recommended policy) — and tell the user which attributes were dropped. Remove attributes with zero variance across brands; they cannot define a direction.
 - Flag likely direct identifiers (names, emails) and ask the user to remove them.

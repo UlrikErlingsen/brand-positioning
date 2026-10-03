@@ -47,7 +47,7 @@ No single threshold certifies a map. With exactly three brands, a centered profi
 
 Important limitations:
 
-- The mathematical minimum is three brands and two varying attributes; five or more relevant brands usually make a more informative competitive frame. The release caps a map at 60 brands and 40 selected attributes.
+- The mathematical minimum is three brands and two varying attributes; five or more relevant brands usually make a more informative competitive frame. Run locally there is no cap on brands, attributes, rows, or file size (see [Data limits](#data-limits)).
 - Rating-scale steps are treated as approximately interval-scaled so means and PCA are usable. That conventional assumption may not suit every instrument.
 - The result is conditional on the chosen respondents, brands, attributes, weights, and preparation. Changing the competitive frame changes the coordinate system.
 - PCA describes linear structure. Curved, nonmetric, respondent-specific, or ideal-point spaces may need other methods.
@@ -71,7 +71,17 @@ The demo is deliberately useful but imperfect. It is deterministic synthetic dat
 
 ## Data contract
 
-Position Signal accepts `.csv`, `.xlsx`, `.xls`, `.xlsm`, and `.json` tables in exactly two wide layouts. The loader limits file size (100 MB by default, configurable with `POSITIONSIGNAL_MAX_UPLOAD_MB`), expanded workbook size, row count, and total cells. A map uses at most 60 brands and 40 selected attributes.
+Position Signal accepts `.csv`, `.xlsx`, `.xls`, `.xlsm`, and `.json` tables in exactly two wide layouts. CSV delimiters (comma, semicolon, tab) are detected from the header line.
+
+### Data limits
+
+Run on your own computer (standalone, a local Signal Hub, or an internal company deployment), Position Signal has **no built-in limit** on file size, rows, cells, brands, or attributes: your computer's memory is the limit. Streamlit's uploader accepts files up to 10,000 MB; set `POSITIONSIGNAL_MAX_UPLOAD_MB` before launching `run_app.bat` or `run_app.command` to change that, or `STREAMLIT_SERVER_MAX_UPLOAD_SIZE` for Docker (the image sets 10000). If a file does not fit in memory, the app says so instead of crashing.
+
+Large files stay fast because CSV files are parsed in chunks by the C reader, text columns are stored as categories and whole-number ratings as small integers, brand profiles and comparisons use grouped sums, and the bootstrap computes each resample as a count-weighted mean of the original rows instead of copying them. Measured on a 5,000,000-row, 360 MB file (500,000 respondents × 10 brands, 20 attributes with missing ratings, survey weights): reading 4.6 s, column audit 2 s, weighted profiles 3 s, wave and segment comparisons 6 s, and 500 bootstrap maps 29 s (with a progress bar), using about 3 GB of memory at the peak. Tips for very large files: upload CSV rather than Excel (a sheet stops at 1,048,576 rows and parses slowly), drop columns the map does not need, and expect the bootstrap time to grow with rows × attributes × iterations.
+
+Maps with more than about 60 brands or 40 attributes still run, but labels crowd; the app notes this. On-screen previews show the first rows with a note, while every calculation and export uses all rows.
+
+The public demo (Signal Hub's public image, `SIGNAL_PUBLIC=1`) protects its shared server with demo limits: 50 MB files (30 MB JSON, 250 MB expanded workbooks), 500,000 rows, 8,000,000 cells, 60 brands, 40 attributes, and 500 bootstrap iterations. The downloaded app has none of these limits.
 
 ### 1. Aggregated brand profiles
 
@@ -189,7 +199,7 @@ python -m pip install -r requirements.txt
 python -m streamlit run app.py
 ```
 
-Position Signal prefers local port `8501` and falls back to another free port on macOS. The launchers accept `POSITIONSIGNAL_PORT`; the macOS launcher also accepts `POSITIONSIGNAL_MAX_UPLOAD_MB` and `POSITIONSIGNAL_NO_BROWSER=1`. Set `POSITIONSIGNAL_DEBUG=1` to reveal unexpected technical error details.
+Position Signal prefers local port `8501` and falls back to another free port on macOS. The launchers accept `POSITIONSIGNAL_PORT` and `POSITIONSIGNAL_MAX_UPLOAD_MB` (upload limit in MB, default 10000); the macOS launcher also accepts `POSITIONSIGNAL_NO_BROWSER=1`. Set `POSITIONSIGNAL_DEBUG=1` to reveal unexpected technical error details.
 
 ### Docker
 
@@ -198,7 +208,7 @@ docker build -t positionsignal .
 docker run --rm -p 8501:8501 positionsignal
 ```
 
-Then open `http://127.0.0.1:8501`. The container runs the app as a non-root user and includes a health check. This repository does not document or promise a hosted public instance.
+Then open `http://127.0.0.1:8501`. The container runs the app as a non-root user and includes a health check. The image sets `STREAMLIT_SERVER_MAX_UPLOAD_SIZE=10000` (MB); pass `-e STREAMLIT_SERVER_MAX_UPLOAD_SIZE=…` to change it, and `-e SIGNAL_PUBLIC=1` only for a public demo with demo limits. This repository does not document or promise a hosted public instance.
 
 ## Privacy
 
