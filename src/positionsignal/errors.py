@@ -11,5 +11,9 @@ def friendly_message(exc: Exception) -> str:
     """Return a useful public message without leaking implementation details."""
     if isinstance(exc, DataProblem):
         return str(exc)
+    if isinstance(exc, MemoryError):
+        from .limits import MEMORY_MESSAGE
+
+        return MEMORY_MESSAGE
     return "Position Signal could not finish that step. Check the data and settings, then try again."
 

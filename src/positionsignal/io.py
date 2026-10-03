@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
+import csv
 from dataclasses import dataclass
 from io import BytesIO
 import json
-import os
 from pathlib import Path
 import re
 from typing import BinaryIO
@@ -13,17 +13,18 @@ import zipfile
 
 import pandas as pd
 
+from . import limits
 from .errors import DataProblem
 
 
 SUPPORTED_EXTENSIONS = {".csv", ".xlsx", ".xls", ".xlsm", ".json"}
-MAX_UPLOAD_MB = max(1, min(int(os.getenv("POSITIONSIGNAL_MAX_UPLOAD_MB", "100")), 500))
-MAX_UPLOAD_BYTES = MAX_UPLOAD_MB * 1024 * 1024
-MAX_JSON_BYTES = 30 * 1024 * 1024
-MAX_UNCOMPRESSED_EXCEL_BYTES = 250 * 1024 * 1024
-MAX_TABLE_ROWS = 500_000
-MAX_TOTAL_CELLS = 8_000_000
-CSV_CHUNK_ROWS = 25_000
+# Run locally there are no size limits; a public demo (SIGNAL_PUBLIC=1) applies the caps in limits.py.
+# Large files are parsed in chunks with text stored as categories and whole numbers as small integers.
+CSV_CHUNK_ROWS = 1_000_000
+JSON_CHUNK_RECORDS = 100_000
+_TYPE_SAMPLE_ROWS = 10_000
+_WHITESPACE = " \t\r\n"
+_SEPARATORS = ", \t\r\n"
 ILLEGAL_XML_CHARACTERS = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f]")
 
 
@@ -67,41 +68,33 @@ def load_data(source: str | Path | bytes | BinaryIO, name: str | None = None) ->
     extension = Path(source_name).suffix.lower()
     if extension not in SUPPORTED_EXTENSIONS:
         raise DataProblem("Please use CSV, Excel, or JSON data.")
-    if len(raw) > MAX_UPLOAD_BYTES:
-        raise DataProblem(f"This file is larger than the configured {MAX_UPLOAD_MB} MB limit.")
-    if extension == ".json" and len(raw) > MAX_JSON_BYTES:
-        raise DataProblem("JSON uploads are limited to 30 MB because they expand in memory.")
+    if limits.exceeds(len(raw), limits.max_upload_bytes()):
+        raise DataProblem(limits.demo_message(f"Files are limited to {limits.DEMO_MAX_UPLOAD_MB} MB here."))
+    if extension == ".json" and limits.exceeds(len(raw), limits.max_json_bytes()):
+        raise DataProblem(limits.demo_message(f"JSON files are limited to {limits.DEMO_MAX_JSON_MB} MB here."))
     if not raw:
         raise DataProblem("This file is empty.")
 
     try:
         if extension == ".csv":
-            chunks: list[pd.DataFrame] = []
-            rows = 0
-            cells = 0
-            for chunk in pd.read_csv(BytesIO(raw), sep=None, engine="python", chunksize=CSV_CHUNK_ROWS):
-                rows += len(chunk)
-                cells += int(chunk.shape[0] * chunk.shape[1])
-                if rows > MAX_TABLE_ROWS or cells > MAX_TOTAL_CELLS:
-                    raise DataProblem("This CSV exceeds the local safety limit. Aggregate or keep fewer columns first.")
-                chunks.append(chunk)
-            tables = {"ratings": pd.concat(chunks, ignore_index=True) if chunks else pd.DataFrame()}
+            tables = {"ratings": _read_csv(raw)}
         elif extension in {".xlsx", ".xls", ".xlsm"}:
             if extension in {".xlsx", ".xlsm"}:
                 with zipfile.ZipFile(BytesIO(raw)) as workbook:
-                    if sum(member.file_size for member in workbook.infolist()) > MAX_UNCOMPRESSED_EXCEL_BYTES:
-                        raise DataProblem("This workbook expands beyond 250 MB. Keep only the sheets needed for mapping.")
+                    expanded = sum(member.file_size for member in workbook.infolist())
+                if limits.exceeds(expanded, limits.max_expanded_workbook_bytes()):
+                    raise DataProblem(
+                        limits.demo_message(
+                            f"Workbooks may expand to at most {limits.DEMO_MAX_EXPANDED_WORKBOOK_MB} MB here."
+                        )
+                    )
             tables = pd.read_excel(BytesIO(raw), sheet_name=None)
         else:
-            payload = json.loads(raw.decode("utf-8-sig"))
-            if isinstance(payload, list):
-                tables = {"ratings": pd.DataFrame(payload)}
-            elif isinstance(payload, dict) and all(isinstance(value, list) for value in payload.values()):
-                tables = {str(key): pd.DataFrame(value) for key, value in payload.items()}
-            else:
-                tables = {"ratings": pd.DataFrame(payload)}
+            tables = _read_json(raw)
     except DataProblem:
         raise
+    except MemoryError as exc:
+        raise DataProblem(limits.MEMORY_MESSAGE) from exc
     except Exception as exc:
         raise DataProblem(
             "The file could not be read. Check that it opens normally and that the first row contains column names."
@@ -112,15 +105,157 @@ def load_data(source: str | Path | bytes | BinaryIO, name: str | None = None) ->
     for table_name, frame in tables.items():
         if frame is None or (frame.empty and len(frame.columns) == 0):
             continue
-        copy = frame.copy()
-        copy.columns = _unique_column_names(list(copy.columns))
-        total_cells += int(copy.shape[0] * copy.shape[1])
-        if len(copy) > MAX_TABLE_ROWS or total_cells > MAX_TOTAL_CELLS:
-            raise DataProblem("The file contains more rows or cells than this local release accepts.")
-        clean[str(table_name)] = copy
+        # The loader owns these frames, so they are renamed and compacted in place rather than copied.
+        frame.columns = _unique_column_names(list(frame.columns))
+        total_cells += int(frame.shape[0] * frame.shape[1])
+        if _too_large(len(frame), total_cells):
+            raise DataProblem(_size_message())
+        try:
+            clean[str(table_name)] = _compact(frame)
+        except MemoryError as exc:
+            raise DataProblem(limits.MEMORY_MESSAGE) from exc
     if not clean:
         raise DataProblem("No usable tables were found in this file.")
     return LoadedData(tables=clean, source_name=source_name)
+
+
+def _too_large(rows: int, cells: int) -> bool:
+    return limits.exceeds(rows, limits.max_table_rows()) or limits.exceeds(cells, limits.max_total_cells())
+
+
+def _size_message() -> str:
+    return limits.demo_message(
+        f"Files are limited to {limits.DEMO_MAX_TABLE_ROWS:,} rows and {limits.DEMO_MAX_TOTAL_CELLS:,} cells here."
+    )
+
+
+def _compact(frame: pd.DataFrame) -> pd.DataFrame:
+    """Store text as categories and whole numbers in the smallest integer type; values are unchanged."""
+    for column in frame.columns:
+        series = frame[column]
+        if series.dtype == object and pd.api.types.infer_dtype(series, skipna=True) == "string":
+            frame[column] = series.astype("category")
+        elif pd.api.types.is_integer_dtype(series.dtype) and not pd.api.types.is_bool_dtype(series.dtype):
+            frame[column] = pd.to_numeric(series, downcast="integer")
+    return frame
+
+
+def _concat_compact(chunks: list[pd.DataFrame]) -> pd.DataFrame:
+    """Concatenate chunks, keeping categorical columns categorical across differing category sets."""
+    if not chunks:
+        return pd.DataFrame()
+    if len(chunks) == 1:
+        return chunks[0]
+    if len({tuple(chunk.columns) for chunk in chunks}) > 1:
+        return _compact(pd.concat(chunks, ignore_index=True))
+    columns: dict[object, pd.Series] = {}
+    for column in chunks[0].columns:
+        parts = [chunk[column] for chunk in chunks]
+        if all(isinstance(part.dtype, pd.CategoricalDtype) for part in parts):
+            combined = pd.api.types.union_categoricals([part.array for part in parts], ignore_order=True)
+            columns[column] = pd.Series(combined, name=column)
+        else:
+            columns[column] = pd.concat(
+                [part.astype(object) if isinstance(part.dtype, pd.CategoricalDtype) else part for part in parts],
+                ignore_index=True,
+            )
+    return _compact(pd.DataFrame(columns))
+
+
+def _sniff_delimiter(raw: bytes) -> str:
+    """Detect the delimiter from the header line, as pandas' ``sep=None`` does, then parse with the fast C reader."""
+    head = raw[:1_000_000]
+    end = head.find(b"\n")
+    first_line = (head if end < 0 else head[:end]).decode("utf-8-sig", errors="replace").rstrip("\r")
+    return csv.Sniffer().sniff(first_line).delimiter
+
+
+def _read_csv(raw: bytes) -> pd.DataFrame:
+    """Parse in large chunks so an oversized file stops early; text columns go straight into categories."""
+    delimiter = _sniff_delimiter(raw)
+    sample = pd.read_csv(BytesIO(raw), sep=delimiter, nrows=_TYPE_SAMPLE_ROWS)
+    text_columns = {column: "category" for column in sample.columns if sample[column].dtype == object}
+    chunks: list[pd.DataFrame] = []
+    rows = 0
+    cells = 0
+    reader = pd.read_csv(BytesIO(raw), sep=delimiter, dtype=text_columns or None, chunksize=CSV_CHUNK_ROWS)
+    with reader:
+        for chunk in reader:
+            rows += len(chunk)
+            cells += int(chunk.shape[0] * chunk.shape[1])
+            if _too_large(rows, cells):
+                raise DataProblem(_size_message())
+            chunks.append(_compact(chunk))
+    if not chunks:
+        return sample.iloc[0:0]
+    return _concat_compact(chunks)
+
+
+def _skip(text: str, position: int, characters: str) -> int:
+    length = len(text)
+    while position < length and text[position] in characters:
+        position += 1
+    return position
+
+
+def _records_frame(text: str, position: int, decoder: json.JSONDecoder) -> tuple[pd.DataFrame, int]:
+    """Parse one JSON array starting at ``position`` into a compact DataFrame, a chunk of records at a time."""
+    position += 1  # the opening bracket
+    chunks: list[pd.DataFrame] = []
+    records: list[object] = []
+    rows = 0
+    while True:
+        position = _skip(text, position, _SEPARATORS)
+        if position >= len(text):
+            raise ValueError("Unterminated JSON array.")
+        if text[position] == "]":
+            position += 1
+            break
+        record, position = decoder.raw_decode(text, position)
+        records.append(record)
+        if len(records) >= JSON_CHUNK_RECORDS:
+            rows += len(records)
+            if limits.exceeds(rows, limits.max_table_rows()):
+                raise DataProblem(_size_message())
+            chunks.append(_compact(pd.DataFrame(records)))
+            records = []
+    if records or not chunks:
+        chunks.append(_compact(pd.DataFrame(records)))
+    return _concat_compact(chunks), position
+
+
+def _read_json(raw: bytes) -> dict[str, pd.DataFrame]:
+    """Read a record list, or an object mapping table names to record lists, without one Python object per cell."""
+    text = raw.decode("utf-8-sig")
+    decoder = json.JSONDecoder()
+    position = _skip(text, 0, _WHITESPACE)
+    if position < len(text) and text[position] == "[":
+        frame, position = _records_frame(text, position, decoder)
+        if _skip(text, position, _WHITESPACE) != len(text):
+            raise ValueError("Unexpected content after the JSON array.")
+        return {"ratings": frame}
+    if position < len(text) and text[position] == "{":
+        tables: dict[str, pd.DataFrame] = {}
+        position += 1
+        while True:
+            position = _skip(text, position, _SEPARATORS)
+            if position < len(text) and text[position] == "}":
+                position += 1
+                break
+            key, position = decoder.raw_decode(text, position)
+            position = _skip(text, position, _WHITESPACE)
+            if position >= len(text) or text[position] != ":":
+                raise ValueError("Malformed JSON object.")
+            position = _skip(text, position + 1, _WHITESPACE)
+            if position < len(text) and text[position] == "[":
+                tables[str(key)], position = _records_frame(text, position, decoder)
+            else:
+                # Not a mapping of record lists (for example column-oriented JSON): use the general reader.
+                return {"ratings": pd.DataFrame(json.loads(text))}
+        if _skip(text, position, _WHITESPACE) != len(text):
+            raise ValueError("Unexpected content after the JSON object.")
+        return tables
+    return {"ratings": pd.DataFrame(json.loads(text))}
 
 
 def safe_for_spreadsheet(frame: pd.DataFrame) -> pd.DataFrame:

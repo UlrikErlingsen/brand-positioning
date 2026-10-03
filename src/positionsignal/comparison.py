@@ -10,6 +10,7 @@ import pandas as pd
 from scipy import stats
 
 from .errors import DataProblem
+from .validation import clean_labels
 
 
 @dataclass(frozen=True)
@@ -70,18 +71,74 @@ def _weighted_stats(values: pd.Series, weights: pd.Series | None) -> tuple[float
 
 
 def _profile_stats(frame: pd.DataFrame, config: ComparisonConfig) -> pd.DataFrame:
-    rows: list[dict[str, object]] = []
-    for brand, group in frame.groupby(config.brand_column, sort=True, observed=True):
-        for attribute in config.attributes:
-            weights = group[config.weight_column] if config.weight_column else None
-            mean, se, n, effective_n = _weighted_stats(group[attribute], weights)
-            rows.append(
-                {
-                    "brand": str(brand), "attribute": attribute, "mean": mean, "standard_error": se,
-                    "rating_rows": n, "effective_n": effective_n,
-                }
+    """Per brand and attribute: the statistics of ``_weighted_stats``, computed with grouped sums.
+
+    ``frame`` comes from ``analyze_position_comparisons``, whose brand column is categorical. Grouped sums keep
+    the comparison fast on files with millions of rating rows.
+    """
+    brand_codes = frame[config.brand_column].cat.codes.to_numpy()
+    categories = frame[config.brand_column].cat.categories
+    size = len(categories)
+    present = np.flatnonzero(np.bincount(brand_codes, minlength=size) > 0)
+    weights = (
+        pd.to_numeric(frame[config.weight_column], errors="coerce").to_numpy(dtype=float) if config.weight_column else None
+    )
+    columns: dict[str, np.ndarray] = {}
+    pieces: list[pd.DataFrame] = []
+    for attribute in config.attributes:
+        values = pd.to_numeric(frame[attribute], errors="coerce").to_numpy(dtype=float)
+        if weights is None:
+            valid = ~np.isnan(values)
+            w = valid.astype(float)
+        else:
+            valid = ~np.isnan(values) & ~np.isnan(weights) & (weights > 0)
+            w = np.where(valid, weights, 0.0)
+        x = np.where(valid, values, 0.0)
+        n = np.bincount(brand_codes, weights=valid.astype(float), minlength=size)
+        weight_sum = np.bincount(brand_codes, weights=w, minlength=size)
+        squared_sum = np.bincount(brand_codes, weights=w * w, minlength=size)
+        with np.errstate(divide="ignore", invalid="ignore"):
+            mean = np.where(weight_sum > 0, np.bincount(brand_codes, weights=w * x, minlength=size) / weight_sum, np.nan)
+            deviation = np.bincount(
+                brand_codes, weights=w * np.square(x - np.nan_to_num(mean)[brand_codes]), minlength=size
             )
-    return pd.DataFrame(rows)
+            if weights is None:
+                standard_error = np.where(n > 1, np.sqrt(deviation / (n - 1)) / np.sqrt(n), np.nan)
+                effective_n = n.copy()
+            else:
+                effective_n = np.where(weight_sum > 0, np.square(weight_sum) / squared_sum, 0.0)
+                denominator = weight_sum - squared_sum / weight_sum
+                variance = np.where((weight_sum > 0) & (denominator > 0), deviation / denominator, np.nan)
+                standard_error = np.where(
+                    (effective_n > 1) & np.isfinite(variance), np.sqrt(variance / effective_n), np.nan
+                )
+        columns = {
+            "brand": categories[present].astype(str).to_numpy(dtype=object),
+            "attribute": np.full(len(present), attribute, dtype=object),
+            "mean": mean[present],
+            "standard_error": standard_error[present],
+            "rating_rows": n[present].astype(np.int64),
+            "effective_n": effective_n[present].astype(float),
+        }
+        pieces.append(pd.DataFrame(columns))
+    if not pieces:
+        return pd.DataFrame(columns=["brand", "attribute", "mean", "standard_error", "rating_rows", "effective_n"])
+    stacked = pd.concat(pieces, ignore_index=True)
+    # Brand-major order, attributes in the declared order, as in the per-group calculation.
+    stacked["_attribute_order"] = np.repeat(np.arange(len(pieces)), len(present))
+    stacked["_brand_order"] = np.tile(np.arange(len(present)), len(pieces))
+    return (
+        stacked.sort_values(["_brand_order", "_attribute_order"], kind="stable")
+        .drop(columns=["_attribute_order", "_brand_order"])
+        .reset_index(drop=True)
+    )
+
+
+def _label_mask(labels: pd.Series, value: object) -> pd.Series:
+    """Rows whose label equals ``value`` as text, without converting a large categorical column to strings."""
+    if isinstance(labels.dtype, pd.CategoricalDtype):
+        return labels.isin([category for category in labels.cat.categories if str(category) == str(value)])
+    return labels.astype(str) == str(value)
 
 
 def _difference_table(left: pd.DataFrame, right: pd.DataFrame, left_label: str, right_label: str) -> pd.DataFrame:
@@ -127,15 +184,18 @@ def analyze_position_comparisons(frame: pd.DataFrame, config: ComparisonConfig) 
     if config.parity_tolerance >= config.difference_threshold:
         raise DataProblem("Parity tolerance must be smaller than the point-of-difference threshold.")
     work = frame[required].copy()
-    work[config.brand_column] = work[config.brand_column].astype("string").str.strip()
-    work = work.loc[work[config.brand_column].notna() & work[config.brand_column].ne("")].copy()
+    work[config.brand_column] = clean_labels(work[config.brand_column])
+    usable = work[config.brand_column].ne("")
+    if not bool(usable.all()):
+        work = work.loc[usable].copy()
+    work[config.brand_column] = work[config.brand_column].cat.remove_unused_categories()
     for attribute in config.attributes:
         work[attribute] = pd.to_numeric(work[attribute], errors="coerce")
     if config.weight_column:
         work[config.weight_column] = pd.to_numeric(work[config.weight_column], errors="coerce")
         if (work[config.weight_column].dropna() <= 0).any():
             raise DataProblem("Survey weights must be positive.")
-    brands = sorted(work[config.brand_column].dropna().astype(str).unique().tolist(), key=str.casefold)
+    brands = sorted(work[config.brand_column].cat.categories.astype(str).tolist(), key=str.casefold)
     if len(brands) < 3:
         raise DataProblem("Comparison reporting needs at least three brands.")
     if config.focus_brand not in brands:
@@ -149,9 +209,8 @@ def analyze_position_comparisons(frame: pd.DataFrame, config: ComparisonConfig) 
     if config.wave_column:
         if not config.reference_wave or not config.comparison_wave or config.reference_wave == config.comparison_wave:
             raise DataProblem("Choose two different wave values.")
-        wave_labels = work[config.wave_column].astype(str)
-        left_rows = work.loc[wave_labels == str(config.reference_wave)]
-        right_rows = work.loc[wave_labels == str(config.comparison_wave)]
+        left_rows = work.loc[_label_mask(work[config.wave_column], config.reference_wave)]
+        right_rows = work.loc[_label_mask(work[config.wave_column], config.comparison_wave)]
         if left_rows.empty or right_rows.empty:
             raise DataProblem("Both declared waves need usable rows.")
         wave_change = _difference_table(
@@ -160,8 +219,8 @@ def analyze_position_comparisons(frame: pd.DataFrame, config: ComparisonConfig) 
         )
         current = right_rows
         if config.respondent_column:
-            overlap = set(left_rows[config.respondent_column].dropna()) & set(right_rows[config.respondent_column].dropna())
-            if overlap:
+            right_ids = pd.unique(right_rows[config.respondent_column].dropna().to_numpy())
+            if bool(left_rows[config.respondent_column].dropna().isin(right_ids).any()):
                 warnings.append(
                     "Some respondents appear in both waves; displayed change intervals use an independent-samples approximation and ignore pairing."
                 )
@@ -170,12 +229,11 @@ def analyze_position_comparisons(frame: pd.DataFrame, config: ComparisonConfig) 
     if config.segment_column:
         if not config.reference_segment or not config.comparison_segment or config.reference_segment == config.comparison_segment:
             raise DataProblem("Choose two different segment values.")
-        segment_labels = work[config.segment_column].astype(str)
-        left_rows = work.loc[segment_labels == str(config.reference_segment)]
-        right_rows = work.loc[segment_labels == str(config.comparison_segment)]
+        left_rows = work.loc[_label_mask(work[config.segment_column], config.reference_segment)]
+        right_rows = work.loc[_label_mask(work[config.segment_column], config.comparison_segment)]
         if config.wave_column:
-            left_rows = left_rows.loc[left_rows[config.wave_column].astype(str) == str(config.comparison_wave)]
-            right_rows = right_rows.loc[right_rows[config.wave_column].astype(str) == str(config.comparison_wave)]
+            left_rows = left_rows.loc[_label_mask(left_rows[config.wave_column], config.comparison_wave)]
+            right_rows = right_rows.loc[_label_mask(right_rows[config.wave_column], config.comparison_wave)]
         if left_rows.empty or right_rows.empty:
             raise DataProblem("Both declared segments need usable rows in the comparison scope.")
         segment_change = _difference_table(

@@ -8,6 +8,7 @@ import re
 import numpy as np
 import pandas as pd
 
+from . import limits
 from .errors import DataProblem
 
 
@@ -68,23 +69,33 @@ def infer_weight_column(frame: pd.DataFrame) -> str | None:
     return next((str(column) for column in frame.columns if WEIGHT_PATTERN.search(str(column))), None)
 
 
+def _is_numeric_candidate(series: pd.Series) -> bool:
+    if pd.api.types.is_numeric_dtype(series.dtype) and not pd.api.types.is_bool_dtype(series.dtype):
+        # Large files: min/max finds "more than one distinct value" without hashing millions of rows.
+        if not bool(series.notna().any()):
+            return False
+        return bool(series.min() != series.max())
+    if isinstance(series.dtype, pd.CategoricalDtype):
+        counts = series.value_counts(dropna=True)
+        counts = counts[counts > 0]
+        if counts.empty:
+            return False
+        converted = pd.to_numeric(pd.Series(counts.index, dtype=object), errors="coerce").to_numpy()
+        numeric_share = float(counts.to_numpy()[~pd.isna(converted)].sum() / counts.sum())
+        return numeric_share >= 0.85 and int(pd.Series(converted).nunique(dropna=True)) > 1
+    nonmissing = series.dropna()
+    if nonmissing.empty:
+        return False
+    converted = pd.to_numeric(nonmissing, errors="coerce")
+    if pd.api.types.is_numeric_dtype(series) or float(converted.notna().mean()) >= 0.85:
+        return int(converted.nunique(dropna=True)) > 1
+    return False
+
+
 def numeric_candidates(frame: pd.DataFrame, excluded: list[str] | tuple[str, ...] = ()) -> list[str]:
     """Return columns that are numeric or at least 85% numeric-like."""
     blocked = set(excluded)
-    result: list[str] = []
-    for column in frame.columns:
-        name = str(column)
-        if name in blocked:
-            continue
-        series = frame[column]
-        nonmissing = series.dropna()
-        if nonmissing.empty:
-            continue
-        converted = pd.to_numeric(nonmissing, errors="coerce")
-        if pd.api.types.is_numeric_dtype(series) or float(converted.notna().mean()) >= 0.85:
-            if int(converted.nunique(dropna=True)) > 1:
-                result.append(name)
-    return result
+    return [str(column) for column in frame.columns if str(column) not in blocked and _is_numeric_candidate(frame[column])]
 
 
 def likely_pii_columns(frame: pd.DataFrame) -> list[str]:
@@ -95,7 +106,8 @@ def likely_pii_columns(frame: pd.DataFrame) -> list[str]:
         if PII_PATTERN.search(name):
             flagged.append(name)
             continue
-        sample = frame[column].dropna().astype(str).head(100)
+        # Take the first 100 values before converting, so a column with millions of rows is not turned into text.
+        sample = frame[column].dropna().head(100).astype(str)
         if not sample.empty and float(sample.str.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$").mean()) > 0.7:
             flagged.append(name)
     return flagged
@@ -107,17 +119,51 @@ def data_quality_report(frame: pd.DataFrame) -> pd.DataFrame:
     rows: list[dict[str, object]] = []
     for column in frame.columns:
         series = frame[column]
+        unique = int(series.nunique(dropna=True))
         rows.append(
             {
                 "column": str(column),
                 "type": str(series.dtype),
                 "missing_%": round(100 * float(series.isna().mean()), 1),
-                "unique": int(series.nunique(dropna=True)),
-                "constant": bool(series.nunique(dropna=True) <= 1),
+                "unique": unique,
+                "constant": bool(unique <= 1),
                 "privacy_note": "direct identifier" if str(column) in pii else "",
             }
         )
     return pd.DataFrame(rows)
+
+
+def clean_labels(series: pd.Series) -> pd.Series:
+    """Strip text labels once per distinct value and return a categorical column (missing becomes "").
+
+    Brand and respondent columns repeat a few values millions of times in large files, so working on the
+    distinct labels keeps cleaning fast. Categories are sorted, which keeps grouped output alphabetical.
+    """
+    if isinstance(series.dtype, pd.CategoricalDtype):
+        codes = series.cat.codes.to_numpy()
+        uniques = pd.Series(series.cat.categories, dtype=object)
+    else:
+        codes, unique_index = pd.factorize(series, use_na_sentinel=True)
+        uniques = pd.Series(unique_index, dtype=object)
+    labels = pd.Series([*uniques.astype(str).str.strip().tolist(), ""], dtype=object)
+    label_codes, categories = pd.factorize(labels, sort=True)
+    mapped = label_codes[np.where(codes >= 0, codes, len(labels) - 1)]
+    return pd.Series(
+        pd.Categorical.from_codes(mapped, categories=pd.Index(categories, dtype=object)),
+        index=series.index,
+        name=series.name,
+    )
+
+
+def _blank_ids(series: pd.Series) -> pd.Series:
+    """Missing or whitespace-only identifiers, without converting millions of numeric IDs to text."""
+    missing = series.isna()
+    if pd.api.types.is_numeric_dtype(series.dtype):
+        return missing
+    if isinstance(series.dtype, pd.CategoricalDtype):
+        blank_categories = [category for category in series.cat.categories if str(category).strip() == ""]
+        return missing | series.isin(blank_categories)
+    return missing | series.astype(str).str.strip().eq("")
 
 
 def _weighted_mean(values: pd.Series, weights: pd.Series) -> float:
@@ -152,8 +198,8 @@ def prepare_brand_profiles(
         raise DataProblem(f"These selected attributes are missing: {', '.join(missing_columns)}.")
     if len(chosen) < 2:
         raise DataProblem("Choose at least two numeric brand attributes.")
-    if len(chosen) > 40:
-        raise DataProblem("Use at most 40 attributes so the map remains stable and interpretable.")
+    if limits.exceeds(len(chosen), limits.max_attributes()):
+        raise DataProblem(limits.demo_message(f"A map uses at most {limits.DEMO_MAX_ATTRIBUTES} attributes here."))
     if respondent_column and respondent_column not in frame:
         raise DataProblem("The selected respondent ID column is missing.")
     if weight_column and weight_column not in frame:
@@ -169,17 +215,19 @@ def prepare_brand_profiles(
     if weight_column:
         keep.append(weight_column)
     work = frame.loc[:, list(dict.fromkeys(keep))].copy()
-    raw_brands = work[brand_column]
-    work[brand_column] = raw_brands.where(raw_brands.notna(), "").astype(str).str.strip()
-    valid_brand = work[brand_column].ne("") & work[brand_column].str.lower().ne("nan")
+    work[brand_column] = clean_labels(work[brand_column])
+    unusable = [category for category in work[brand_column].cat.categories if category == "" or category.lower() == "nan"]
+    valid_brand = ~work[brand_column].isin(unusable)
     dropped_brand_rows = int((~valid_brand).sum())
-    work = work.loc[valid_brand].copy()
+    if dropped_brand_rows:
+        work = work.loc[valid_brand].copy()
+    work[brand_column] = work[brand_column].cat.remove_unused_categories()
     if work.empty:
         raise DataProblem("No rows contain a usable brand name.")
     if work[brand_column].nunique() < 3:
         raise DataProblem("A two-dimensional map needs ratings for at least three brands.")
-    if work[brand_column].nunique() > 60:
-        raise DataProblem("This release maps at most 60 brands at once. Keep the competitors relevant to the decision.")
+    if limits.exceeds(int(work[brand_column].nunique()), limits.max_brands()):
+        raise DataProblem(limits.demo_message(f"A map shows at most {limits.DEMO_MAX_BRANDS} brands here."))
 
     for attribute in chosen:
         work[attribute] = pd.to_numeric(work[attribute], errors="coerce")
@@ -189,11 +237,11 @@ def prepare_brand_profiles(
         if bool(invalid_weight.any()):
             raise DataProblem("Survey weights must be finite positive numbers on every retained row.")
         if respondent_column:
-            weight_counts = work.groupby(respondent_column, dropna=False)[weight_column].nunique(dropna=False)
+            weight_counts = work.groupby(respondent_column, dropna=False, observed=True)[weight_column].nunique(dropna=False)
             if bool((weight_counts > 1).any()):
                 raise DataProblem("A respondent's survey weight must be constant across every brand they rated.")
     if respondent_column:
-        missing_respondent = work[respondent_column].isna() | work[respondent_column].astype(str).str.strip().eq("")
+        missing_respondent = _blank_ids(work[respondent_column])
         if bool(missing_respondent.any()):
             raise DataProblem("Respondent IDs cannot be blank when respondent-level data are selected.")
         if bool(work.duplicated([respondent_column, brand_column]).any()):
@@ -209,23 +257,29 @@ def prepare_brand_profiles(
         counts.insert(0, "rating_rows", grouped.size())
 
     if weight_column:
-        rows: dict[str, dict[str, float]] = {}
-        for brand, group in grouped:
-            rows[str(brand)] = {
-                attribute: _weighted_mean(group[attribute], group[weight_column]) for attribute in chosen
-            }
-        profiles = pd.DataFrame.from_dict(rows, orient="index").sort_index()
-        profiles.index.name = brand_column
+        # Same weighted mean as _weighted_mean per brand and attribute, computed with grouped sums.
+        weights = work[weight_column].to_numpy(dtype=float)
+        brand_codes = work[brand_column].cat.codes.to_numpy()
+        brand_index = pd.Index(work[brand_column].cat.categories, name=brand_column)
+        size = len(brand_index)
+        means: dict[str, np.ndarray] = {}
         for attribute in chosen:
-            effective: dict[str, float] = {}
-            for brand, group in grouped:
-                valid = group[attribute].notna()
-                weights = group.loc[valid, weight_column].astype(float)
-                squared_sum = float(np.square(weights).sum())
-                effective[str(brand)] = float(weights.sum() ** 2 / squared_sum) if squared_sum > 0 else 0.0
-            counts[f"{attribute}__effective_n"] = pd.Series(effective)
+            values = work[attribute].to_numpy(dtype=float)
+            valid = ~np.isnan(values)
+            valid_weights = np.where(valid, weights, 0.0)
+            weighted_values = np.bincount(brand_codes, weights=np.where(valid, values, 0.0) * valid_weights, minlength=size)
+            weight_sums = np.bincount(brand_codes, weights=valid_weights, minlength=size)
+            squared_sums = np.bincount(brand_codes, weights=np.square(valid_weights), minlength=size)
+            with np.errstate(divide="ignore", invalid="ignore"):
+                means[attribute] = np.where(weight_sums > 0, weighted_values / weight_sums, np.nan)
+                effective = np.where(squared_sums > 0, np.square(weight_sums) / squared_sums, 0.0)
+            counts[f"{attribute}__effective_n"] = pd.Series(effective, index=brand_index).reindex(counts.index)
+        profiles = pd.DataFrame(means, index=brand_index)
     else:
         profiles = grouped[chosen].mean()
+    # Aggregated tables are small; plain text indexes keep downstream code independent of category storage.
+    profiles.index = pd.Index(profiles.index.astype(str), name=brand_column)
+    counts.index = pd.Index(counts.index.astype(str), name=brand_column)
 
     incomplete = [str(column) for column in profiles.columns if bool(profiles[column].isna().any())]
     if incomplete and missing_policy == "error":

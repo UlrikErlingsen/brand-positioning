@@ -99,13 +99,19 @@ def test_app_weighted_profiles_agree_with_generated_brand_summary(
     assert (prepared.counts[effective_columns] > 0).all().all()
 
 
+def _plain(frame: pd.DataFrame) -> pd.DataFrame:
+    return frame.astype({column: object for column in frame.select_dtypes("category").columns})
+
+
 def test_csv_and_excel_templates_round_trip_through_the_app_loader() -> None:
     expected = ratings_template()
     csv_loaded = load_data(EXAMPLES / "ratings_template.csv").tables["ratings"]
     excel_loaded = load_data(EXAMPLES / "ratings_template.xlsx").tables["Ratings"]
 
-    pd.testing.assert_frame_equal(csv_loaded, expected, check_dtype=False)
-    pd.testing.assert_frame_equal(excel_loaded, expected, check_dtype=False)
+    # The loader stores text as categories (compact for large files); the values are unchanged.
+    assert isinstance(csv_loaded["brand"].dtype, pd.CategoricalDtype)
+    pd.testing.assert_frame_equal(_plain(csv_loaded), expected, check_dtype=False)
+    pd.testing.assert_frame_equal(_plain(excel_loaded), expected, check_dtype=False)
 
     csv_profiles = prepare_brand_profiles(
         csv_loaded,
