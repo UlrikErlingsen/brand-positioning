@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Callable
 
 import numpy as np
 import pandas as pd
@@ -11,8 +12,9 @@ from scipy.spatial.distance import pdist, squareform
 from scipy.stats import chi2
 from sklearn.decomposition import PCA
 
+from . import limits
 from .errors import DataProblem
-from .validation import ProfileData, prepare_brand_profiles
+from .validation import ProfileData
 
 
 @dataclass(frozen=True)
@@ -263,12 +265,85 @@ def _ellipse_points(center: np.ndarray, covariance: np.ndarray, confidence: floa
     return (center[:, None] + transform @ circle).T
 
 
+_BOOTSTRAP_BATCH = 64
+_BOOTSTRAP_BLOCK_ROWS = 250_000
+
+
+class _BootstrapProfiles:
+    """Brand-by-attribute means for many bootstrap draws at once.
+
+    A draw resamples respondents with replacement, so each respondent's rows count as often as the respondent
+    was drawn. The bootstrap brand mean is therefore a count-weighted mean of the original rows, which equals
+    re-aggregating a concatenated resample but needs no copied rows: rows are grouped by brand once, and each
+    batch of draws becomes one matrix product per block of rows.
+    """
+
+    def __init__(self, profile_data: ProfileData, brands: list[str], attributes: list[str], respondent_index: np.ndarray):
+        source = profile_data.source_rows
+        brand_position = pd.Index(brands).get_indexer(source[profile_data.brand_column].astype(str).to_numpy())
+        keep = (brand_position >= 0) & (respondent_index >= 0)
+        rows = np.flatnonzero(keep)
+        order = np.argsort(brand_position[rows], kind="stable")
+        self.rows = rows[order]
+        self.respondents = respondent_index[self.rows]
+        sorted_brands = brand_position[self.rows]
+        self.brand_bounds = np.searchsorted(sorted_brands, np.arange(len(brands) + 1))
+        self.columns = [source[attribute].to_numpy() for attribute in attributes]
+        weight_column = profile_data.weight_column
+        self.weights = source[weight_column].to_numpy(dtype=float)[self.rows] if weight_column else None
+        self.has_missing = any(
+            np.issubdtype(column.dtype, np.floating) and bool(np.isnan(column[self.rows]).any()) for column in self.columns
+        )
+        self.brand_count = len(brands)
+        self.attribute_count = len(attributes)
+
+    def _block(self, start: int, stop: int) -> tuple[np.ndarray, np.ndarray | None]:
+        """Weighted values (missing as zero) and, when needed, weighted non-missing indicators for sorted rows."""
+        positions = self.rows[start:stop]
+        values = np.empty((stop - start, self.attribute_count), dtype=float)
+        for index, column in enumerate(self.columns):
+            values[:, index] = column[positions]
+        valid = None
+        if self.has_missing:
+            missing = np.isnan(values)
+            valid = (~missing).astype(float)
+            values[missing] = 0.0
+        if self.weights is not None:
+            weights = self.weights[start:stop, None]
+            values *= weights
+            if valid is not None:
+                valid *= weights
+        return values, valid
+
+    def means(self, counts: np.ndarray) -> np.ndarray:
+        """Return draws × brands × attributes means (NaN where a cell has no resampled rating)."""
+        draws = counts.shape[0]
+        numerator = np.zeros((draws, self.brand_count, self.attribute_count))
+        denominator = np.zeros((draws, self.brand_count, self.attribute_count))
+        for brand in range(self.brand_count):
+            lower, upper = int(self.brand_bounds[brand]), int(self.brand_bounds[brand + 1])
+            for start in range(lower, upper, _BOOTSTRAP_BLOCK_ROWS):
+                stop = min(start + _BOOTSTRAP_BLOCK_ROWS, upper)
+                row_counts = counts[:, self.respondents[start:stop]]
+                values, valid = self._block(start, stop)
+                numerator[:, brand, :] += row_counts @ values
+                if valid is not None:
+                    denominator[:, brand, :] += row_counts @ valid
+                elif self.weights is not None:
+                    denominator[:, brand, :] += (row_counts @ self.weights[start:stop])[:, None]
+                else:
+                    denominator[:, brand, :] += row_counts.sum(axis=1)[:, None]
+        with np.errstate(divide="ignore", invalid="ignore"):
+            return np.where(denominator > 0, numerator / denominator, np.nan)
+
+
 def bootstrap_respondent_maps(
     profile_data: ProfileData,
     reference: MapResult,
     iterations: int = 200,
     confidence: float = 0.90,
     random_state: int = 2026,
+    progress: Callable[[int, int], None] | None = None,
 ) -> BootstrapResult:
     """Cluster-bootstrap respondents, refit PCA, and align each map by Procrustes rotation.
 
@@ -276,12 +351,20 @@ def bootstrap_respondent_maps(
     axes may flip or swap between samples, so each bootstrap score configuration is
     centered and orthogonally aligned to the observed brand coordinates before its
     covariance is summarized. No scale dilation is applied.
+
+    Brand means for each draw are computed as count-weighted means of the original rows (see
+    ``_BootstrapProfiles``), so memory does not grow with the resample and large files stay workable.
+    ``progress(done, total)`` is called after each batch of draws.
     """
     respondent = profile_data.respondent_column
     if not respondent:
         raise DataProblem("Bootstrap uncertainty needs a respondent ID column.")
     if iterations < 50 or iterations > 2000:
         raise DataProblem("Choose between 50 and 2,000 bootstrap iterations.")
+    if limits.exceeds(iterations, limits.max_bootstrap_iterations()):
+        raise DataProblem(
+            limits.demo_message(f"The bootstrap runs at most {limits.DEMO_MAX_BOOTSTRAP_ITERATIONS} iterations here.")
+        )
     if not (0.50 <= confidence < 1.0):
         raise DataProblem("The uncertainty level must be at least 50% and below 100%.")
     source = profile_data.source_rows
@@ -300,58 +383,62 @@ def bootstrap_respondent_maps(
     reference_loadings = reference.attribute_coordinates.set_index("attribute").loc[
         attributes, ["pc1_coefficient", "pc2_coefficient"]
     ].to_numpy()
-    groups = {key: group for key, group in source.groupby(respondent, sort=False, observed=True)}
+    respondent_index = pd.Index(ids).get_indexer(source[respondent])
     brand_counts_by_respondent = source.groupby(respondent, observed=True)[profile_data.brand_column].nunique()
     independent_brand_samples = bool((brand_counts_by_respondent == 1).all())
     resampling_scheme = "within-brand respondents" if independent_brand_samples else "respondent clusters across brands"
-    ids_by_brand: dict[str, np.ndarray] = {}
+    ids_by_brand: list[np.ndarray] = []
     if independent_brand_samples:
-        respondent_brands = source[[respondent, profile_data.brand_column]].drop_duplicates()
-        ids_by_brand = {
-            str(brand): group[respondent].to_numpy()
-            for brand, group in respondent_brands.groupby(profile_data.brand_column, sort=True, observed=True)
-        }
+        respondent_brands = (
+            pd.DataFrame({"respondent": respondent_index, "brand": source[profile_data.brand_column].to_numpy()})
+            .loc[respondent_index >= 0]
+            .drop_duplicates()
+        )
+        ids_by_brand = [
+            group["respondent"].to_numpy()
+            for _, group in respondent_brands.groupby("brand", sort=True, observed=True)
+        ]
+    profiles = _BootstrapProfiles(profile_data, brands, attributes, respondent_index)
     rng = np.random.default_rng(random_state)
     point_rows: list[dict[str, float | int | str]] = []
 
-    for iteration in range(iterations):
-        if independent_brand_samples:
-            sampled = np.concatenate(
-                [rng.choice(brand_ids, size=len(brand_ids), replace=True) for brand_ids in ids_by_brand.values()]
-            )
-        else:
-            sampled = rng.choice(ids, size=len(ids), replace=True)
-        pieces: list[pd.DataFrame] = []
-        for draw, key in enumerate(sampled):
-            piece = groups[key].copy()
-            piece["__bootstrap_respondent"] = f"{draw}:{key}"
-            pieces.append(piece)
-        boot_frame = pd.concat(pieces, ignore_index=True)
-        try:
-            prepared = prepare_brand_profiles(
-                boot_frame,
-                brand_column=profile_data.brand_column,
-                attributes=list(profile_data.attributes),
-                respondent_column="__bootstrap_respondent",
-                weight_column=profile_data.weight_column,
-                missing_policy="error",
-            )
-            if set(prepared.brands) != set(brands) or list(prepared.attributes) != list(profile_data.attributes):
+    for batch_start in range(0, iterations, _BOOTSTRAP_BATCH):
+        batch = range(batch_start, min(batch_start + _BOOTSTRAP_BATCH, iterations))
+        counts = np.zeros((len(batch), len(ids)))
+        for row, _ in enumerate(batch):
+            # Same random stream as drawing respondent IDs with rng.choice, one draw per iteration.
+            if independent_brand_samples:
+                sampled = np.concatenate(
+                    [rng.choice(brand_ids, size=len(brand_ids), replace=True) for brand_ids in ids_by_brand]
+                )
+            else:
+                sampled = rng.choice(len(ids), size=len(ids), replace=True)
+            counts[row] = np.bincount(sampled, minlength=len(ids))
+        batch_means = profiles.means(counts)
+        for row, iteration in enumerate(batch):
+            matrix = batch_means[row]
+            # A draw is unusable when a cell has no rating or an attribute stops varying between brands.
+            if not np.isfinite(matrix).all() or bool((matrix == matrix[0]).all(axis=0).any()):
                 continue
-            fitted = fit_perceptual_map(prepared.profiles.loc[brands], scale_attributes=reference.scale_attributes)
-            boot_xy = fitted.brand_coordinates.set_index("brand").loc[brands, ["pc1", "pc2"]].to_numpy()
-            boot_xy = boot_xy - boot_xy.mean(axis=0, keepdims=True)
-            boot_loadings = fitted.attribute_coordinates.set_index("attribute").loc[
-                attributes, ["pc1_coefficient", "pc2_coefficient"]
-            ].to_numpy()
-            rotation, _ = orthogonal_procrustes(boot_loadings, reference_loadings)
-            aligned = boot_xy @ rotation
-        except (DataProblem, ValueError, np.linalg.LinAlgError):
-            continue
-        for brand, coordinates in zip(brands, aligned):
-            point_rows.append(
-                {"iteration": iteration + 1, "brand": brand, "pc1": float(coordinates[0]), "pc2": float(coordinates[1])}
-            )
+            try:
+                fitted = fit_perceptual_map(
+                    pd.DataFrame(matrix, index=brands, columns=attributes), scale_attributes=reference.scale_attributes
+                )
+                boot_xy = fitted.brand_coordinates.set_index("brand").loc[brands, ["pc1", "pc2"]].to_numpy()
+                boot_xy = boot_xy - boot_xy.mean(axis=0, keepdims=True)
+                boot_loadings = fitted.attribute_coordinates.set_index("attribute").loc[
+                    attributes, ["pc1_coefficient", "pc2_coefficient"]
+                ].to_numpy()
+                rotation, _ = orthogonal_procrustes(boot_loadings, reference_loadings)
+                aligned = boot_xy @ rotation
+            except (DataProblem, ValueError, np.linalg.LinAlgError):
+                continue
+            for brand, coordinates in zip(brands, aligned):
+                point_rows.append(
+                    {"iteration": iteration + 1, "brand": brand, "pc1": float(coordinates[0]), "pc2": float(coordinates[1])}
+                )
+        if progress is not None:
+            progress(batch.stop, iterations)
 
     points = pd.DataFrame(point_rows)
     successful = int(points["iteration"].nunique()) if not points.empty else 0
